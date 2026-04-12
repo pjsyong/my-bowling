@@ -3,9 +3,7 @@
 import React, { useState, useEffect, use } from 'react';
 import { supabase } from '@/lib/supabase';
 import { 
-  ArrowLeft, Calendar, CheckCircle2, Clock, 
-  Banknote, Check, UserCheck, Users2, Plus, X, Phone, User,
-  AlertCircle
+  ArrowLeft, Calendar, Check, UserCheck, Users2, Plus, X, Phone, User, AlertCircle, Banknote, ShieldCheck
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -28,6 +26,7 @@ export default function EventDetailPage({ params }) {
 
   const fetchEventData = async () => {
     try {
+      // 1. 대회 정보
       const { data: eventData } = await supabase
         .from('event')
         .select('*')
@@ -35,14 +34,31 @@ export default function EventDetailPage({ params }) {
         .single();
       setEventInfo(eventData);
 
+      // 2. 신청 명단 가져오기
       const { data: entryData, error: entryError } = await supabase
         .from('entry')
-        .select(`*, user:user_id ( name )`)
+        .select('*')
         .eq('event_id', eventId);
 
       if (entryError) throw entryError;
 
-      const sortedData = (entryData || []).sort((a, b) => {
+      // 3. ✅ 신청 유저 정보 가져오기 (type_pro 컬럼 추가)
+      const userIds = entryData.map(e => e.user_id);
+      const { data: userData, error: userError } = await supabase
+        .from('user')
+        .select('user_id, name, phone, type_pro') // type_pro 필드 추가
+        .in('user_id', userIds);
+
+      if (userError) throw userError;
+
+      // 4. 데이터 병합
+      const combinedData = entryData.map(entry => ({
+        ...entry,
+        user: userData.find(u => u.user_id === entry.user_id) || null
+      }));
+
+      // 정렬: 입금 여부 -> 확정 여부 -> 순번
+      const sortedData = combinedData.sort((a, b) => {
         if (a.payment_status !== b.payment_status) return a.payment_status ? -1 : 1;
         if (a.result !== b.result) return a.result ? -1 : 1;
         return a.entry_id - b.entry_id;
@@ -59,6 +75,15 @@ export default function EventDetailPage({ params }) {
   useEffect(() => {
     fetchEventData();
   }, [eventId]);
+
+  const maskPhoneNumber = (phone) => {
+    if (!phone) return '번호 없음';
+    const pure = phone.replace(/[^0-9]/g, '');
+    if (pure.length >= 10) {
+      return `${pure.substring(0, 3)}-****-${pure.substring(pure.length - 4)}`;
+    }
+    return phone;
+  };
 
   const formatEventDate = (dateString) => {
     if (!dateString) return '';
@@ -100,7 +125,7 @@ export default function EventDetailPage({ params }) {
         .maybeSingle();
 
       if (!userData) {
-        alert('등록된 회원 정보를 찾을 수 없습니다.');
+        alert('회원 정보를 찾을 수 없습니다.');
         setIsSubmitting(false);
         return;
       }
@@ -118,16 +143,16 @@ export default function EventDetailPage({ params }) {
       ]);
 
       if (insertError) {
-        if (insertError.code === '23505') alert('이미 신청되어 있습니다.');
+        if (insertError.code === '23505') alert('이미 신청되었습니다.');
         else throw insertError;
       } else {
-        alert('참가 신청 완료!');
+        alert('신청 완료!');
         setIsModalOpen(false);
         setFormData({ user_name: '', user_phone: '', pay_person: false, pay_team: true });
         fetchEventData();
       }
     } catch (error) {
-      alert('오류가 발생했습니다.');
+      alert('오류 발생');
     } finally {
       setIsSubmitting(false);
     }
@@ -146,7 +171,7 @@ export default function EventDetailPage({ params }) {
           대회 목록
         </Link>
         {!eventInfo.end && (
-          <button onClick={() => setIsModalOpen(true)} className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-black flex items-center gap-2 hover:bg-blue-600 transition-all shadow-xl">
+          <button onClick={() => setIsModalOpen(true)} className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-black flex items-center gap-2 hover:bg-blue-600 transition-all shadow-xl shadow-slate-200">
             <Plus size={20} /> 참가 신청
           </button>
         )}
@@ -177,6 +202,11 @@ export default function EventDetailPage({ params }) {
             </div>
           </div>
         </div>
+        {maxCount > 0 && (
+          <div className="mt-8 w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+            <div className="bg-blue-500 h-full transition-all duration-1000 ease-out" style={{ width: `${Math.min((confirmedCount / maxCount) * 100, 100)}%` }} />
+          </div>
+        )}
       </div>
 
       <div className="bg-white rounded-[32px] shadow-sm border border-slate-100 overflow-hidden">
@@ -186,7 +216,7 @@ export default function EventDetailPage({ params }) {
               <th className="p-6 text-[11px] font-black text-slate-400 uppercase tracking-widest w-20">순번</th>
               <th className="p-6 text-[11px] font-black text-slate-400 uppercase tracking-widest">이름</th>
               <th className="p-6 text-[11px] font-black text-slate-400 uppercase tracking-widest">참여 구분</th>
-              {/* ✅ 입금 금액 컬럼 추가 */}
+              <th className="p-6 text-[11px] font-black text-slate-400 uppercase tracking-widest">전화번호</th>
               <th className="p-6 text-[11px] font-black text-slate-400 uppercase tracking-widest text-right">입금 금액</th>
               <th className="p-6 text-[11px] font-black text-slate-400 uppercase tracking-widest text-right">상태</th>
             </tr>
@@ -196,14 +226,28 @@ export default function EventDetailPage({ params }) {
               entries.map((entry, index) => (
                 <tr key={entry.entry_id} className="border-b border-slate-50 last:border-none hover:bg-slate-50/30 transition-colors">
                   <td className="p-6"><span className="text-slate-300 font-black italic">{index + 1}</span></td>
-                  <td className="p-6"><p className="text-lg font-black text-slate-800 tracking-tight">{entry.user?.name || '정보 없음'}</p></td>
+                  <td className="p-6">
+                    <div className="flex items-center gap-2">
+                      <p className="text-lg font-black text-slate-800 tracking-tight">{entry.user?.name || '정보 없음'}</p>
+                      {/* ✅ PRO 태그 렌더링 부분 */}
+                      {entry.user?.type_pro === 1 && (
+                        <span className="flex items-center gap-0.5 bg-slate-900 text-white text-[9px] px-1.5 py-0.5 rounded font-black italic tracking-tighter">
+                          <ShieldCheck size={10} className="text-blue-400" /> PRO
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="p-6">
                     <div className="flex gap-2">
                         {entry.pay_team && <div className="flex items-center gap-1.5 bg-purple-50 text-purple-600 px-3 py-1.5 rounded-xl border border-purple-100 text-[10px] font-black uppercase"><Users2 size={12} /> 팀전</div>}
                         {entry.pay_person && <div className="flex items-center gap-1.5 bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-xl border border-indigo-100 text-[10px] font-black uppercase"><UserCheck size={12} /> 개인전</div>}
                     </div>
                   </td>
-                  {/* ✅ 각 인원별 입금해야 하는 금액 표시 */}
+                  <td className="p-6">
+                    <p className="text-sm font-bold text-slate-500 tracking-wider">
+                      {entry.user ? maskPhoneNumber(entry.user.phone) : '번호 없음'}
+                    </p>
+                  </td>
                   <td className="p-6 text-right font-black text-slate-700 italic text-lg">
                     {entry.payment_amount?.toLocaleString() || 0}원
                   </td>
@@ -224,17 +268,16 @@ export default function EventDetailPage({ params }) {
                 </tr>
               ))
             ) : (
-              <tr><td colSpan="5" className="p-20 text-center text-slate-300 font-bold italic">신청자가 없습니다.</td></tr>
+              <tr><td colSpan="6" className="p-20 text-center text-slate-300 font-bold italic">신청자가 없습니다.</td></tr>
             )}
           </tbody>
         </table>
       </div>
 
-      {/* 모달 생략 (위의 로직과 동일) */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsModalOpen(false)} />
-          <div className="relative bg-white w-full max-w-md rounded-[40px] shadow-2xl overflow-hidden">
+          <div className="relative bg-white w-full max-w-md rounded-[40px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300">
             <div className="p-8 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
               <h2 className="text-2xl font-black italic tracking-tighter text-slate-900">참가 신청</h2>
               <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><X size={24} className="text-slate-400" /></button>
@@ -253,8 +296,8 @@ export default function EventDetailPage({ params }) {
               <div className="space-y-3">
                 <label className="text-[10px] font-black text-slate-400 tracking-widest ml-1">참여 항목</label>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="flex items-center justify-center gap-2 py-4 rounded-2xl font-black bg-purple-600 text-white"><Users2 size={18} /> 팀전</div>
-                  <button type="button" onClick={() => setFormData({...formData, pay_person: !formData.pay_person})} className={`flex items-center justify-center gap-2 py-4 rounded-2xl font-black border-2 ${formData.pay_person ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-100 text-slate-300'}`}><UserCheck size={18} /> 개인전</button>
+                  <div className="flex items-center justify-center gap-2 py-4 rounded-2xl font-black bg-purple-600 text-white shadow-lg shadow-purple-100"><Users2 size={18} /> 팀전</div>
+                  <button type="button" onClick={() => setFormData({...formData, pay_person: !formData.pay_person})} className={`flex items-center justify-center gap-2 py-4 rounded-2xl font-black transition-all border-2 ${formData.pay_person ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-100' : 'bg-white border-slate-100 text-slate-300'}`}><UserCheck size={18} /> 개인전</button>
                 </div>
               </div>
               <div className="bg-slate-900 rounded-3xl p-6 text-white relative">

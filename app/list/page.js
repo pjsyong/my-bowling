@@ -46,18 +46,10 @@ export default function EventListPage() {
             return (
               <Link 
                 key={event.event_id} 
-                // ✅ 이 부분이 중요합니다! 상세 페이지 경로와 일치해야 합니다.
-                href={isClosed ? '#' : `/list/${event.event_id}`} 
-                onClick={(e) => {
-                  if (isClosed) {
-                    e.preventDefault();
-                    alert('이미 마감된 대회입니다. 현황만 확인하시겠습니까? (기능 준비 중)');
-                  }
-                }}
-                className={`group bg-white p-8 rounded-[32px] shadow-sm border border-slate-100 transition-all flex items-center justify-between ${
-                  isClosed 
-                    ? 'opacity-60 cursor-not-allowed' 
-                    : 'hover:border-indigo-200 hover:shadow-md cursor-pointer'
+                // ✅ 비활성화 로직 제거: 마감 여부와 상관없이 상세 페이지로 이동
+                href={`/list/${event.event_id}`} 
+                className={`group bg-white p-8 rounded-[32px] shadow-sm border border-slate-100 transition-all flex items-center justify-between hover:border-indigo-200 hover:shadow-md cursor-pointer ${
+                  isClosed ? 'bg-slate-50/50' : '' 
                 }`}
               >
                 <div className="flex flex-col gap-4">
@@ -79,7 +71,7 @@ export default function EventListPage() {
                   </div>
                   
                   <h3 className={`text-2xl font-black tracking-tight transition-colors ${
-                    isClosed ? 'text-slate-400' : 'text-slate-900 group-hover:text-indigo-600'
+                    isClosed ? 'text-slate-500' : 'text-slate-900 group-hover:text-indigo-600'
                   }`}>
                     {event.title}
                   </h3>
@@ -96,11 +88,8 @@ export default function EventListPage() {
                   </div>
                 </div>
 
-                <div className={`p-4 rounded-2xl transition-all ${
-                  isClosed 
-                    ? 'bg-slate-50 text-slate-200' 
-                    : 'bg-slate-50 text-slate-400 group-hover:bg-indigo-600 group-hover:text-white'
-                }`}>
+                {/* 우측 화살표 아이콘: 마감되어도 호버 효과 유지 */}
+                <div className="p-4 rounded-2xl transition-all bg-slate-50 text-slate-400 group-hover:bg-indigo-600 group-hover:text-white">
                   <ChevronRight size={24} />
                 </div>
               </Link>

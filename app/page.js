@@ -60,9 +60,9 @@ export default function RecordPage() {
       {/* --- 상단 헤더 & 필터 --- */}
       <div className="flex justify-between items-end mb-10">
         <div>
-          <h2 className="text-4xl font-bold tracking-tight mb-2">대회 기록</h2>
+          <h2 className="text-4xl font-bold tracking-tight mb-2">In-Jeong 볼링장 점수판</h2>
           <p className="text-slate-400 font-medium">
-            {selectedEvent?.event_date} — {selectedEvent?.progress ? '종료됨' : '모집 중'}
+            {selectedEvent?.event_date}
           </p>
         </div>
 
@@ -97,7 +97,7 @@ export default function RecordPage() {
 
       {selectedEvent?.progress === false ? (
         <div className="bg-white rounded-[40px] p-20 border border-gray-100 text-center">
-          <h3 className="text-xl font-bold">현재 모집 중인 대회입니다</h3>
+          <h3 className="text-xl font-bold">현재 정산되지 않은 대회입니다.</h3>
           <p className="text-slate-400 font-light mt-2">대회가 종료된 후 기록이 노출됩니다.</p>
         </div>
       ) : (
@@ -107,7 +107,7 @@ export default function RecordPage() {
             <StatCard label="참가 인원" value={`${rankings.length}명`} icon={<Users size={20} className="text-slate-900"/>} />
             <StatCard label="현재 1위" value={rankings[0]?.user?.name || '-'} icon={<Trophy size={20} className="text-amber-600"/>} />
             <StatCard label="최고 총점" value={rankings[0]?.total || 0} icon={<Star size={20} className="text-blue-700"/>} />
-            <StatCard label="목표 에버" value="180" icon={<Target size={20} className="text-emerald-700"/>} />
+            <StatCard label="목표 에버" value="200" icon={<Target size={20} className="text-emerald-700"/>} />
           </div>
 
           {/* --- Game Leaders (게임별 1,2,3위) --- */}
@@ -222,26 +222,27 @@ export default function RecordPage() {
               </table>
             </div>
           </motion.div>
-         {/* --- 상위 5인 게임별 상세 분석 (고정 높이 보정 버전) --- */}
+          {/* --- 상위 5인 -> "전체 인원" 게임별 상세 분석 --- */}
           <div className="mt-12 bg-white rounded-[40px] border border-gray-100 shadow-sm overflow-hidden">
             <div className="p-10 pb-4">
-              <h3 className="text-xl font-bold text-slate-800">Top 5 Game Performance</h3>
-              <p className="text-sm text-slate-400 mt-1 font-medium">유저별 1~5게임 점수와 평균 추이 (고정 레이아웃)</p>
+              <h3 className="text-xl font-bold text-slate-800">Player Performance Trends</h3>
+              <p className="text-sm text-slate-400 mt-1 font-medium">전체 참가자의 게임별 기록 및 평균 추이</p>
             </div>
 
             <div className="px-10 pb-10">
-              <div className="overflow-x-auto custom-scrollbar-x pb-4">
-                {/* 💡 이 부분! min-width를 추가하고 height를 확실히 고정합니다 */}
+              {/* 가로 스크롤을 위한 컨테이너: CSS 클래스나 인라인 스타일로 overflow-x-auto 설정 */}
+              <div className="overflow-x-auto pb-6 custom-scrollbar">
                 <div style={{ 
-                  width: '1000px', 
-                  minWidth: '1000px', // 너비가 줄어들지 않도록 고정
-                  height: '400px', 
-                  position: 'relative' // ResponsiveContainer가 기준을 잡기 좋게 설정
+                  // 데이터 개수(rankings.length)에 따라 최소 너비를 동적으로 계산합니다.
+                  // 인당 150px 정도를 확보하면 30명일 때 약 4500px의 넉넉한 너비가 생깁니다.
+                  width: `${Math.max(1000, rankings.length * 150)}px`, 
+                  height: '450px', 
+                  position: 'relative' 
                 }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart
-                      data={rankings.slice(0, 5).map(p => {
-                        // ... 기존 데이터 로직 동일
+                      // .slice(0, 5)를 제거하여 전체 리스트(rankings)를 사용합니다.
+                      data={rankings.map(p => {
                         const realAvg = Number(p.avg);
                         return {
                           name: p.user?.name,
@@ -251,29 +252,27 @@ export default function RecordPage() {
                           "4G": p.scores[3] || 0,
                           "5G": p.scores[4] || 0,
                           avg: realAvg,
-                          avgLine: realAvg + 100
+                          avgLine: realAvg + 150 // 차트 가독성을 위해 라인 위치 조정 (기존 로직 유지)
                         };
                       })}
-                      margin={{ top: 50, right: 30, left: 40, bottom: 20 }}
+                      margin={{ top: 50, right: 30, left: 40, bottom: 40 }}
                     >
-                      {/* 가로 눈금선을 더 연하게 (slate-50) 깔아줍니다 */}
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
                       
                       <XAxis 
                         dataKey="name" 
-                        tick={{ fontSize: 13, fontWeight: 800, fill: '#1E293B' }} 
+                        tick={{ fontSize: 12, fontWeight: 700, fill: '#475569' }} 
                         axisLine={false} 
                         tickLine={false} 
-                        dy={10} 
+                        interval={0} // 모든 유저의 이름을 생략 없이 표시
+                        dy={15} 
                       />
 
-                      {/* 🛠️ Y축 활성화 및 단위 표시 */}
                       <YAxis 
-                        domain={[0, 380]} 
+                        domain={[0, 400]} 
                         axisLine={false} 
                         tickLine={false}
                         tick={{ fontSize: 11, fill: '#94A3B8', fontWeight: 500 }}
-                        // 왼쪽에 "점수" 단위 표시
                         label={{ 
                           angle: -90, 
                           position: 'insideLeft', 
@@ -288,10 +287,9 @@ export default function RecordPage() {
                       />
                       <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ paddingBottom: '30px', fontSize: '12px' }} />
 
-                      {/* 막대 및 선 (기존 로직 유지) */}
                       {["1G", "2G", "3G", "4G", "5G"].map((key, i) => (
-                        <Bar key={key} dataKey={key} fill={["#E2E8F0", "#CBD5E1", "#94A3B8", "#475569", "#1E293B"][i]} radius={[4, 4, 0, 0]} barSize={20}>
-                          <LabelList dataKey={key} position="top" style={{ fontSize: '10px', fill: '#94A3B8' }} offset={5} />
+                        <Bar key={key} dataKey={key} fill={["#E2E8F0", "#CBD5E1", "#94A3B8", "#475569", "#1E293B"][i]} radius={[4, 4, 0, 0]} barSize={25}>
+                          <LabelList dataKey={key} position="top" style={{ fontSize: '9px', fill: '#94A3B8' }} offset={5} />
                         </Bar>
                       ))}
 
@@ -306,7 +304,7 @@ export default function RecordPage() {
                         <LabelList 
                           dataKey="avg" 
                           position="top" 
-                          style={{ fontSize: '12px', fontWeight: '900', fill: '#2563EB' }} 
+                          style={{ fontSize: '11px', fontWeight: '900', fill: '#2563EB' }} 
                           offset={10} 
                         />
                       </Line>
