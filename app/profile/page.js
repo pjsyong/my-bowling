@@ -1,3 +1,5 @@
+'use client';
+
 import React from 'react';
 
 // 💡 1. 함수 이름은 반드시 대문자로 시작 (ProfilePage)
