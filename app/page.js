@@ -8,6 +8,9 @@ import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 
 import { supabase } from '@/lib/supabase'; // 경로에 맞춰 수정
 
+
+
+
 export default function RecordPage() {
   const [events, setEvents] = useState([]);
   const [selectedEventId, setSelectedEventId] = useState(null);

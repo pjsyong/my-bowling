@@ -13,6 +13,7 @@ export default function Sidebar() {
     { name: '대회 기록', icon: <Trophy size={18} />, path: '/' },
     { name: '대회 목록', icon: <List size={18} />, path: '/list' },
     { name: '개인 기록', icon: <User size={18} />, path: '/profile' },
+    { name: '설정', path: '/admin', icon: '🔒' },
   ];
 
   return (
