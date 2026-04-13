@@ -3,7 +3,7 @@
 import React, { useState, useEffect, use } from 'react';
 import { supabase } from '@/lib/supabase';
 import { 
-  ArrowLeft, Calendar, Check, UserCheck, Users2, Plus, X, Phone, User, AlertCircle, Banknote, ShieldCheck, ChevronRight
+  ArrowLeft, Calendar, Check, UserCheck, Users2, Plus, X, Fingerprint, User, AlertCircle, Banknote, ShieldCheck, ChevronRight
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -19,7 +19,7 @@ export default function EventDetailPage({ params }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     user_name: '',
-    user_phone: '',
+    user_id_val: '', // user_phone에서 변경
     pay_person: false,
     pay_team: true 
   });
@@ -42,8 +42,8 @@ export default function EventDetailPage({ params }) {
 
       const userIds = entryData.map(e => e.user_id);
       const { data: userData, error: userError } = await supabase
-        .from('user')
-        .select('user_id, name, phone, type_pro')
+        .from('user_public')
+        .select('user_id, name, type_pro') // phone -> current_id
         .in('user_id', userIds);
 
       if (userError) throw userError;
@@ -71,13 +71,13 @@ export default function EventDetailPage({ params }) {
     fetchEventData();
   }, [eventId]);
 
-  const maskPhoneNumber = (phone) => {
-    if (!phone) return '번호 없음';
-    const pure = phone.replace(/[^0-9]/g, '');
-    if (pure.length >= 10) {
-      return `${pure.substring(0, 3)}-****-${pure.substring(pure.length - 4)}`;
+  // ID 보안 마스킹 (앞 3글자만 노출 예시)
+  const maskId = (id) => {
+    if (!id) return '정보 없음';
+    if (id.length > 3) {
+      return id.substring(0, 3) + '*'.repeat(id.length - 3);
     }
-    return phone;
+    return id;
   };
 
   const formatEventDate = (dateString) => {
@@ -96,34 +96,24 @@ export default function EventDetailPage({ params }) {
     return total;
   };
 
-  const handlePhoneChange = (e) => {
-    const value = e.target.value.replace(/[^0-9]/g, '');
-    let formatted = value;
-    if (value.length > 3 && value.length <= 7) {
-      formatted = `${value.slice(0, 3)}-${value.slice(3)}`;
-    } else if (value.length > 7) {
-      formatted = `${value.slice(0, 3)}-${value.slice(3, 7)}-${value.slice(7, 11)}`;
-    }
-    setFormData({ ...formData, user_phone: formatted });
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (isSubmitting) return;
     setIsSubmitting(true);
     
     try {
+      // phone 대신 current_id로 사용자 확인
       const { data: userData, error: userError } = await supabase
         .from('user')
         .select('user_id, official')
         .eq('name', formData.user_name.trim())
-        .eq('phone', formData.user_phone.trim())
+        .eq('current_id', formData.user_id_val.trim()) 
         .maybeSingle();
 
       if (userError) throw userError;
 
       if (!userData) {
-        alert('회원 정보를 찾을 수 없습니다. 먼저 회원 등록을 진행해 주세요.');
+        alert('회원 정보를 찾을 수 없습니다. 이름과 식별 ID를 다시 확인해 주세요.');
         setIsSubmitting(false);
         return;
       }
@@ -167,7 +157,7 @@ export default function EventDetailPage({ params }) {
       } else {
         alert('신청 완료!');
         setIsModalOpen(false);
-        setFormData({ user_name: '', user_phone: '', pay_person: false, pay_team: true });
+        setFormData({ user_name: '', user_id_val: '', pay_person: false, pay_team: true });
         fetchEventData();
       }
     } catch (error) {
@@ -184,7 +174,6 @@ export default function EventDetailPage({ params }) {
 
   return (
     <section className="max-w-6xl mx-auto py-6 md:py-12 px-4 md:px-6 font-sans text-slate-900">
-      {/* 헤더 네비게이션 */}
       <div className="flex justify-between items-center mb-6 md:mb-8">
         <Link href="/list" className="flex items-center gap-1.5 text-slate-400 hover:text-slate-900 transition-all font-bold group text-sm md:text-base">
           <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" />
@@ -200,7 +189,6 @@ export default function EventDetailPage({ params }) {
         )}
       </div>
 
-      {/* 이벤트 정보 카드 */}
       <div className="bg-white p-6 md:p-10 rounded-[32px] md:rounded-[40px] shadow-sm border border-slate-100 mb-6 md:mb-8">
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-3">
@@ -240,9 +228,7 @@ export default function EventDetailPage({ params }) {
         )}
       </div>
 
-      {/* 명단 영역: 모바일 카드 / PC 테이블 */}
       <div className="bg-white rounded-[24px] md:rounded-[32px] shadow-sm border border-slate-100 overflow-hidden">
-        {/* PC 버전 테이블 (md 이상) */}
         <div className="hidden md:block">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -250,20 +236,19 @@ export default function EventDetailPage({ params }) {
                 <th className="p-6 text-[11px] font-black text-slate-400 uppercase tracking-widest w-20">순번</th>
                 <th className="p-6 text-[11px] font-black text-slate-400 uppercase tracking-widest">이름</th>
                 <th className="p-6 text-[11px] font-black text-slate-400 uppercase tracking-widest">참여 구분</th>
-                <th className="p-6 text-[11px] font-black text-slate-400 uppercase tracking-widest">전화번호</th>
+                <th className="p-6 text-[11px] font-black text-slate-400 uppercase tracking-widest">식별 ID</th>
                 <th className="p-6 text-[11px] font-black text-slate-400 uppercase tracking-widest text-right">입금 금액</th>
                 <th className="p-6 text-[11px] font-black text-slate-400 uppercase tracking-widest text-right">상태</th>
               </tr>
             </thead>
             <tbody>
               {entries.map((entry, index) => (
-                <EntryRow key={entry.entry_id} entry={entry} index={index} maskPhoneNumber={maskPhoneNumber} />
+                <EntryRow key={entry.entry_id} entry={entry} index={index} maskId={maskId} />
               ))}
             </tbody>
           </table>
         </div>
 
-        {/* 모바일 버전 리스트 (md 미만) */}
         <div className="block md:hidden divide-y divide-slate-50">
           {entries.length > 0 ? (
             entries.map((entry, index) => (
@@ -299,7 +284,7 @@ export default function EventDetailPage({ params }) {
                         {entry.pay_person && <div className="bg-indigo-50 text-indigo-600 px-2 py-1 rounded-lg border border-indigo-100 text-[9px] font-black uppercase">개인전</div>}
                     </div>
                     <p className="text-xs font-bold text-slate-400 tracking-wider">
-                      {entry.user ? maskPhoneNumber(entry.user.phone) : '번호 없음'}
+                      {entry.user ? maskId(entry.user.current_id) : '정보 없음'}
                     </p>
                   </div>
                   <p className="font-black text-slate-700 italic text-xl">
@@ -314,7 +299,6 @@ export default function EventDetailPage({ params }) {
         </div>
       </div>
 
-      {/* 모달 섹션 (동일, 모바일 너비 조정) */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center p-0 md:p-6">
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsModalOpen(false)} />
@@ -330,8 +314,8 @@ export default function EventDetailPage({ params }) {
                   <input required type="text" placeholder="이름 입력" value={formData.user_name} onChange={(e) => setFormData({...formData, user_name: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 rounded-xl border-none outline-none font-bold text-sm" />
                 </div>
                 <div>
-                  <label className="text-[9px] font-black text-slate-400 tracking-widest ml-1 uppercase">Phone</label>
-                  <input required type="text" maxLength="13" placeholder="010-0000-0000" value={formData.user_phone} onChange={handlePhoneChange} className="w-full px-5 py-3.5 bg-slate-50 rounded-xl border-none outline-none font-bold text-sm" />
+                  <label className="text-[9px] font-black text-slate-400 tracking-widest ml-1 uppercase">Identification ID</label>
+                  <input required type="text" placeholder="본인 확인용 식별 ID 입력" value={formData.user_id_val} onChange={(e) => setFormData({...formData, user_id_val: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 rounded-xl border-none outline-none font-bold text-sm" />
                 </div>
               </div>
               <div className="space-y-3">
@@ -359,8 +343,7 @@ export default function EventDetailPage({ params }) {
   );
 }
 
-// PC용 테이블 행 컴포넌트
-function EntryRow({ entry, index, maskPhoneNumber }) {
+function EntryRow({ entry, index, maskId }) {
   return (
     <tr className="border-b border-slate-50 last:border-none hover:bg-slate-50/30 transition-colors">
       <td className="p-6"><span className="text-slate-300 font-black italic">{index + 1}</span></td>
@@ -382,7 +365,7 @@ function EntryRow({ entry, index, maskPhoneNumber }) {
       </td>
       <td className="p-6">
         <p className="text-sm font-bold text-slate-500 tracking-wider">
-          {entry.user ? maskPhoneNumber(entry.user.phone) : '번호 없음'}
+          {entry.user ? maskId(entry.user.current_id) : '정보 없음'}
         </p>
       </td>
       <td className="p-6 text-right font-black text-slate-700 italic text-lg">

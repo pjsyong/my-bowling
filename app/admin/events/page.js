@@ -92,13 +92,23 @@ export default function EventManagementPage() {
     }
   }, []);
 
-  useEffect(() => {
-    const authStatus = sessionStorage.getItem('admin_auth');
-    if (authStatus !== 'true') {
-      router.push('/admin');
-      return;
-    }
-    fetchEvents();
+useEffect(() => {
+    const checkAuth = async () => {
+      // 1. Supabase 서버에서 현재 로그인 유저의 세션 정보를 직접 가져옴
+      const { data: { user }, error } = await supabase.auth.getUser();
+
+      // 2. 로그인 정보가 없거나, 로그인된 이메일이 관리자(injeong@gmail.com)가 아니면 즉시 차단
+      if (error || !user || user.email !== 'injeong@gmail.com') {
+        alert('관리자 인증이 필요합니다.');
+        router.push('/admin'); // 로그인 페이지로 리다이렉트
+        return;
+      }
+
+      // 3. 관리자임이 서버에서 확인된 경우에만 데이터를 불러옴
+      fetchEvents();
+    };
+
+    checkAuth();
   }, [router, fetchEvents]);
 
   const handleSubmit = async (e) => {

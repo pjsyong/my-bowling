@@ -41,8 +41,14 @@ export default function IntegratedRecordPage() {
   }, [selectedEventId]);
 
   async function fetchRankings(eventId) {
-    const { data: entryData } = await supabase.from('entry').select('*, user:user_id(name)').eq('event_id', eventId);
-    const { data: scoreData } = await supabase.from('score').select('*').eq('event_id', eventId);
+    const { data: entryData } = await supabase
+      .from('entry')
+      .select('*, user:user_public!user_id(name)') // user 대신 user_public 뷰를 참조
+      .eq('event_id', eventId);
+    const { data: scoreData } = await supabase
+      .from('score')
+      .select('*')
+      .eq('event_id', eventId);
 
     const combined = entryData?.map(entry => {
       const s = scoreData?.find(score => score.user_id === entry.user_id) || {};

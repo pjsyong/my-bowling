@@ -3,15 +3,15 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { UserPlus, Pencil, Trash2, ArrowLeft, CheckCircle2, XCircle } from 'lucide-react';
+import { UserPlus, Pencil, Trash2, ArrowLeft, CheckCircle2, XCircle, Fingerprint } from 'lucide-react';
 import Link from 'next/link';
 
 export default function UserManagementPage() {
   const [users, setUsers] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
-  // formData에 official 추가
-  const [formData, setFormData] = useState({ name: '', phone: '', type_pro: 0, official: false });
+  // phone -> current_id로 변경
+  const [formData, setFormData] = useState({ name: '', current_id: '', type_pro: 0, official: false });
   const router = useRouter();
 
   const fetchUsers = async () => {
@@ -29,13 +29,23 @@ export default function UserManagementPage() {
   };
 
   useEffect(() => {
-    const authStatus = sessionStorage.getItem('admin_auth');
-    if (authStatus !== 'true') {
-      alert('관리자 인증이 필요합니다.');
-      router.push('/admin');
-    }
-    fetchUsers();
-  }, []);
+    const checkAuth = async () => {
+      // 1. Supabase 서버에서 현재 로그인 유저의 세션 정보를 직접 가져옴
+      const { data: { user }, error } = await supabase.auth.getUser();
+
+      // 2. 로그인 정보가 없거나, 로그인된 이메일이 관리자(injeong@gmail.com)가 아니면 즉시 차단
+      if (error || !user || user.email !== 'injeong@gmail.com') {
+        alert('관리자 인증이 필요합니다.');
+        router.push('/admin'); // 로그인 페이지로 리다이렉트
+        return;
+      }
+
+      // 3. 관리자임이 서버에서 확인된 경우에만 데이터를 불러옴
+      fetchUsers();
+    };
+
+    checkAuth();
+  }, [router, fetchUsers]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -47,9 +57,9 @@ export default function UserManagementPage() {
           .from('user')
           .update({
             name: formData.name,
-            phone: formData.phone,
+            current_id: formData.current_id, // current_id 컬럼 업데이트
             type_pro: parseInt(formData.type_pro),
-            official: formData.official // official 상태 업데이트 추가
+            official: formData.official 
           })
           .eq('user_id', editingUser.user_id);
         
@@ -60,9 +70,9 @@ export default function UserManagementPage() {
           .from('user')
           .insert([{
             name: formData.name,
-            phone: formData.phone,
+            current_id: formData.current_id, // current_id 컬럼 삽입
             type_pro: parseInt(formData.type_pro),
-            official: formData.official, // 등록 시에도 official 상태 반영
+            official: formData.official,
             created_at: today
           }]);
         
@@ -110,7 +120,7 @@ export default function UserManagementPage() {
           </div>
           
           <button 
-            onClick={() => { setEditingUser(null); setFormData({ name: '', phone: '', type_pro: 0, official: false }); setIsModalOpen(true); }}
+            onClick={() => { setEditingUser(null); setFormData({ name: '', current_id: '', type_pro: 0, official: false }); setIsModalOpen(true); }}
             className="bg-slate-900 text-white px-8 py-4 rounded-[20px] flex items-center gap-2 hover:bg-slate-800 transition-all shadow-xl shadow-slate-200 font-bold"
           >
             <UserPlus size={20} /> 신규 회원
@@ -126,14 +136,13 @@ export default function UserManagementPage() {
               <th className="px-8 py-6">이름</th>
               <th className="px-8 py-6 text-center">구분</th>
               <th className="px-8 py-6 text-center">상태</th>
-              <th className="px-8 py-6">연락처</th>
+              <th className="px-8 py-6">식별 ID</th>
               <th className="px-8 py-6 text-right">관리</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
            {users.map((user, index) => (
               <tr key={user.user_id} className="hover:bg-slate-50/50 transition-colors">
-                {/* index는 0부터 시작하므로 1을 더해줍니다 */}
                 <td className="px-8 py-6 text-center text-slate-300 font-black">
                   {index + 1}
                 </td>
@@ -145,7 +154,6 @@ export default function UserManagementPage() {
                     <span className="bg-slate-100 text-slate-500 px-3 py-1 rounded-full text-[10px] font-black">NORMAL</span>
                   )}
                 </td>
-                {/* 정회원/비회원 상태 표시 추가 */}
                 <td className="px-8 py-6 text-center">
                   {user.official ? (
                     <div className="flex items-center justify-center gap-1 text-emerald-500 font-black text-[10px]">
@@ -157,12 +165,18 @@ export default function UserManagementPage() {
                     </div>
                   )}
                 </td>
-                <td className="px-8 py-6 text-slate-500 font-bold text-sm">{user.phone}</td>
+                {/* user.phone -> user.current_id */}
+                <td className="px-8 py-6 text-slate-500 font-bold text-sm">{user.current_id}</td>
                 <td className="px-8 py-6 text-right">
                   <div className="flex justify-end gap-2">
                     <button onClick={() => { 
                       setEditingUser(user); 
-                      setFormData({ name: user.name, phone: user.phone, type_pro: user.type_pro, official: user.official }); 
+                      setFormData({ 
+                        name: user.name, 
+                        current_id: user.current_id, // 데이터 로드 시 매핑
+                        type_pro: user.type_pro, 
+                        official: user.official 
+                      }); 
                       setIsModalOpen(true); 
                     }} className="p-2 text-slate-300 hover:text-blue-500 transition-colors">
                       <Pencil size={18} />
@@ -188,11 +202,10 @@ export default function UserManagementPage() {
                 <input required value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full mt-2 px-6 py-4 bg-slate-50 rounded-2xl border-none focus:ring-2 focus:ring-slate-200 outline-none font-bold text-lg" />
               </div>
               <div>
-                <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest ml-1">연락처</label>
-                <input value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} className="w-full mt-2 px-6 py-4 bg-slate-50 rounded-2xl border-none focus:ring-2 focus:ring-slate-200 outline-none font-bold" placeholder="010-0000-0000" />
+                <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest ml-1">식별 ID</label>
+                <input required value={formData.current_id} onChange={(e) => setFormData({...formData, current_id: e.target.value})} className="w-full mt-2 px-6 py-4 bg-slate-50 rounded-2xl border-none focus:ring-2 focus:ring-slate-200 outline-none font-bold" placeholder="고유 식별 정보 입력" />
               </div>
               
-              {/* 구분과 상태를 나란히 배치 */}
               <div className="grid grid-cols-2 gap-6">
                 <div>
                   <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest ml-1">구분</label>

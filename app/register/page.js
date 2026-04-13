@@ -2,58 +2,47 @@
 
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { UserPlus, Phone, User, Award, Send, CheckCircle2 } from 'lucide-react';
-// Supabase 클라이언트 임포트 (경로는 프로젝트 설정에 맞게 확인해주세요)
+import { UserPlus, Fingerprint, User, Award, Send, CheckCircle2 } from 'lucide-react';
+// Supabase 클라이언트 임포트
 import { supabase } from '@/lib/supabase';
 
 export default function RegisterPage() {
   const [formData, setFormData] = useState({
     name: '',
-    phone: '',
-    role: '일반인', // UI 표시용
+    current_id: '', // phone에서 변경
+    role: '일반인', 
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
 
-  // 연락처 자동 하이픈 로직
-  const handlePhoneChange = (e) => {
-    const value = e.target.value.replace(/[^0-9]/g, '');
-    let result = '';
-
-    if (value.length < 4) {
-      result = value;
-    } else if (value.length < 8) {
-      result = value.slice(0, 3) + '-' + value.slice(3);
-    } else {
-      result = value.slice(0, 3) + '-' + value.slice(3, 7) + '-' + value.slice(7, 11);
-    }
-
-    setFormData({ ...formData, phone: result });
+  // 일반 식별 ID 입력 핸들러 (하이픈 자동 생성 로직 제거)
+  const handleIdChange = (e) => {
+    setFormData({ ...formData, current_id: e.target.value });
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // 1. 유효성 검사 (010-0000-0000 형식 확인)
-    if (formData.phone.length !== 13) {
-      alert('연락처 형식을 확인해 주세요 (010-0000-0000)');
+    // 1. 유효성 검사 (간단한 공백 및 길이 체크로 변경)
+    if (formData.current_id.trim().length < 2) {
+      alert('식별 ID를 정확히 입력해 주세요.');
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      // 2. 중복 전화번호 확인 (DB 조회)
+      // 2. 중복 식별 ID 확인 (DB 조회) - phone -> current_id
       const { data: existingUser, error: checkError } = await supabase
         .from('user')
-        .select('phone')
-        .eq('phone', formData.phone)
-        .maybeSingle(); // 데이터가 없어도 에러를 던지지 않음
+        .select('user_id') // 식별 ID 대신 내부 관리용 ID만 조회하여 보안 강화
+        .eq('current_id', formData.current_id.trim())
+        .maybeSingle();
 
       if (checkError) throw checkError;
 
       if (existingUser) {
-        alert('이미 등록 신청되었거나 가입된 전화번호입니다. 관리자에게 문의하세요.');
+        alert('이미 등록 신청되었거나 가입된 정보입니다. 관리자에게 문의하세요.');
         setIsSubmitting(false);
         return;
       }
@@ -64,11 +53,11 @@ export default function RegisterPage() {
       const { error: insertError } = await supabase
         .from('user')
         .insert([{
-          name: formData.name,
-          phone: formData.phone,
+          name: formData.name.trim(),
+          current_id: formData.current_id.trim(),
           type_pro: formData.role === '프로' ? 1 : 0,
-          official: false, // 기본 미승인 상태
-          created_at: today //
+          official: false, // 관리자 승인 전까지는 false 유지
+          created_at: today 
         }]);
 
       if (insertError) throw insertError;
@@ -81,7 +70,6 @@ export default function RegisterPage() {
     }
   };
 
-  // 신청 완료 화면
   if (isSubmitted) {
     return (
       <div className="max-w-2xl mx-auto py-20 px-6 flex flex-col items-center text-center">
@@ -142,16 +130,15 @@ export default function RegisterPage() {
 
           <div className="space-y-2.5 md:space-y-3">
             <label className="flex items-center gap-2 text-[10px] md:text-[11px] font-black text-slate-400 uppercase tracking-widest ml-1">
-              <Phone size={13} /> 연락처
+              <Fingerprint size={13} /> 식별 ID
             </label>
             <input 
               required
-              type="tel"
-              maxLength={13}
-              placeholder="010-0000-0000"
+              type="text"
+              placeholder="본인 확인용 식별 정보를 입력해 주세요"
               className="w-full px-6 md:px-8 py-4.5 md:py-5 bg-slate-50 border-none rounded-[20px] md:rounded-[24px] focus:ring-2 focus:ring-blue-500 outline-none transition-all font-bold text-slate-800 placeholder:text-slate-300 text-sm md:text-base"
-              value={formData.phone}
-              onChange={handlePhoneChange}
+              value={formData.current_id}
+              onChange={handleIdChange}
               disabled={isSubmitting}
             />
           </div>
