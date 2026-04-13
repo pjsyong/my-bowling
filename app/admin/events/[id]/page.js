@@ -24,10 +24,29 @@ export default function EntryManagementPage({ params }) {
     setTimeout(() => setToast({ show: false, message: '', type: 'success' }), 2000);
   };
 
-  const totalAmount = entries.reduce((acc, entry) => acc + (Number(entry.payment_amount) || 0), 0);
-  const paidAmount = entries.reduce((acc, entry) => {
-    return entry.payment_status ? acc + (Number(entry.payment_amount) || 0) : acc;
+  // 1. 신청 확정자(result: true) 기준 전체 예정 금액
+  const totalAmount = entries.reduce((acc, entry) => {
+    return entry.result ? acc + (Number(entry.payment_amount) || 0) : acc;
   }, 0);
+
+  // 2. 입금 완료된 금액 중 '개인전' 합계 (확정자 기준)
+  const paidPersonAmount = entries.reduce((acc, entry) => {
+    if (entry.payment_status && entry.pay_person) {
+      return acc + (Number(eventInfo?.event_pay_person) || 0);
+    }
+    return acc;
+  }, 0);
+
+  // 3. 입금 완료된 금액 중 '팀전' 합계 (확정자 기준)
+  const paidTeamAmount = entries.reduce((acc, entry) => {
+    if (entry.payment_status && entry.pay_team) {
+      return acc + (Number(eventInfo?.event_pay_team) || 0);
+    }
+    return acc;
+  }, 0);
+
+  // 4. 전체 입금 완료 총액 (개인 + 팀)
+  const totalPaidAmount = paidPersonAmount + paidTeamAmount;
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -96,24 +115,51 @@ export default function EntryManagementPage({ params }) {
     }
   };
 
-  const handleStatusToggle = async (entry, field) => {
-    let updateData = {};
-    if (field === 'payment_status') {
-      const nextStatus = !entry.payment_status;
-      updateData = { payment_status: nextStatus, result: nextStatus ? true : entry.result };
-    } else if (field === 'result') {
-      updateData = { result: !entry.result };
-    }
+const handleStatusToggle = async (entry, field) => {
+  // 1. 인원 제한 변수 설정
+  const maxCount = Number(eventInfo?.max_people || 0);
+  const confirmedCount = entries.filter(e => e.result === true).length;
 
-    try {
-      const { error } = await supabase.from('entry').update(updateData).eq('entry_id', entry.entry_id);
-      if (error) throw error;
-      showToast('상태 변경 완료');
-      fetchData();
-    } catch (error) {
-      showToast('변경 실패', 'error');
+  // 2. 정원 초과 체크 로직
+  // '미정 -> 확정'으로 바꿀 때 또는 '미정인 상태에서 입금완료'로 바꿀 때
+  const isBecomingConfirmed = (field === 'result' && !entry.result) || 
+                               (field === 'payment_status' && !entry.payment_status && !entry.result);
+
+  if (isBecomingConfirmed) {
+    if (maxCount > 0 && confirmedCount >= maxCount) {
+      // Toast가 안 보일 수 있으므로 alert로 먼저 확인
+      alert(`정원 초과! 현재 ${confirmedCount}명이 모두 찼습니다. (최대 ${maxCount}명)`);
+      return; 
     }
-  };
+  }
+
+  // 3. 업데이트 데이터 구성
+  let updateData = {};
+  if (field === 'payment_status') {
+    const nextStatus = !entry.payment_status;
+    updateData = { 
+      payment_status: nextStatus, 
+      result: nextStatus ? true : entry.result 
+    };
+  } else if (field === 'result') {
+    updateData = { result: !entry.result };
+  }
+
+  try {
+    const { error: supabaseError } = await supabase // 변수명을 supabaseError로 명확히 변경
+      .from('entry')
+      .update(updateData)
+      .eq('entry_id', entry.entry_id);
+
+    if (supabaseError) throw supabaseError;
+    
+    showToast('상태가 변경되었습니다.');
+    fetchData(); 
+  } catch (err) { // 변수명을 err로 변경하여 충돌 방지
+    console.error('Update Error:', err);
+    alert('변경 실패: ' + (err.message || '알 수 없는 오류'));
+  }
+};
 
   const handleUpdateNote = async (entry_id, value) => {
     try {
@@ -180,14 +226,20 @@ export default function EntryManagementPage({ params }) {
               <Users size={16} /> Total {entries.length} Entries
             </p>
           </div>
-          <div className="flex gap-4">
+          <div className="flex flex-wrap gap-4">
             <div className="bg-slate-50 px-6 py-4 rounded-[28px] border border-slate-100 min-w-[160px]">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">전체 입금액</p>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">확정자 총액</p>
               <p className="text-xl font-black text-slate-900">{totalAmount.toLocaleString()}원</p>
             </div>
+            
             <div className="bg-emerald-50 px-6 py-4 rounded-[28px] border border-emerald-100 min-w-[160px]">
-              <p className="text-[10px] font-black text-emerald-600/60 uppercase tracking-widest mb-1">입금 완료 금액</p>
-              <p className="text-xl font-black text-emerald-600">{paidAmount.toLocaleString()}원</p>
+              <p className="text-[10px] font-black text-emerald-600/60 uppercase tracking-widest mb-1">개인전 입금액</p>
+              <p className="text-xl font-black text-emerald-600">{paidPersonAmount.toLocaleString()}원</p>
+            </div>
+
+            <div className="bg-purple-50 px-6 py-4 rounded-[28px] border border-purple-100 min-w-[160px]">
+              <p className="text-[10px] font-black text-purple-600/60 uppercase tracking-widest mb-1">팀전 입금액</p>
+              <p className="text-xl font-black text-purple-600">{paidTeamAmount.toLocaleString()}원</p>
             </div>
           </div>
         </div>

@@ -49,7 +49,9 @@ export default function IntegratedRecordPage() {
       const scores = [s.game_1 || 0, s.game_2 || 0, s.game_3 || 0, s.game_4 || 0, s.game_5 || 0];
       const total = scores.reduce((a, b) => a + b, 0);
       return { ...entry, total, avg: (total / 5).toFixed(1), scores };
-    }).sort((a, b) => b.total - a.total);
+    })
+    .filter(entry => entry.result === true) // ✅ 이 줄을 추가하여 확정자만 남깁니다.
+    .sort((a, b) => b.total - a.total);
 
     setRankings(combined || []);
   }
@@ -142,7 +144,11 @@ export default function IntegratedRecordPage() {
 
       {/* --- 상단 요약 카드 (반응형 그리드) --- */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
-        <StatCard label="참가 인원" value={`${rankings.length}명`} icon={<Users size={20}/>} />
+        <StatCard 
+          label="참가 인원" 
+          value={`${rankings.filter(r => r.result === true).length}명`} 
+          icon={<Users size={20}/>} 
+        />
         <StatCard label="현재 1위" value={rankings[0]?.user?.name || '-'} icon={<Trophy size={20} className="text-amber-500"/>} />
         <StatCard label="최고 총점" value={rankings[0]?.total || 0} icon={<Star size={20} className="text-blue-500"/>} />
         <StatCard label="목표 에버" value="200" icon={<Target size={20} className="text-emerald-500"/>} />
@@ -180,11 +186,15 @@ export default function IntegratedRecordPage() {
       {/* --- Prize Amount Cards (Title Removed) --- */}
       <div className="mb-10 md:mb-12">
         {(() => {
-          // 현재 선택된 이벤트 데이터를 기반으로 상금 계산
-          const paidCount = rankings.length; 
+          // [수정 포인트]: 단순히 rankings.length(전체 신청자)를 쓰지 않고, 
+          // result와 pay_person이 모두 true인 인원만 필터링하여 상금을 계산합니다.
+          const confirmedCount = rankings.filter(r => 
+            r.result === true && r.pay_person === true
+          ).length || 0;
+
           const { prizes, totalRemainder } = getPrizeData(
             selectedEvent?.event_pay_person,
-            paidCount,
+            confirmedCount, // <-- 수정된 확정 인원 전달
             { r1: selectedEvent?.ratio_1, r2: selectedEvent?.ratio_2, r3: selectedEvent?.ratio_3 },
             selectedEvent?.frame
           );
@@ -195,7 +205,11 @@ export default function IntegratedRecordPage() {
               <PrizeBox label="2nd Prize" amount={prizes[1]} color="bg-purple-50 text-purple-700 border-purple-100" rank="🥈" />
               <PrizeBox label="3rd Prize" amount={prizes[2]} color="bg-emerald-50 text-emerald-700 border-emerald-100" rank="🥉" />
               <div className="flex flex-col justify-center p-5 md:p-6 bg-slate-50 rounded-[24px] border border-slate-100 shadow-sm">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Remainder</span>
+                <div className="flex justify-between items-start mb-1">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Remainder</span>
+                  {/* 시각적으로 확정 인원수를 작게 표시해주면 더 친절합니다 */}
+                  <span className="text-[9px] font-bold text-indigo-400">확정 {confirmedCount}명 기준</span>
+                </div>
                 <span className="text-lg font-bold text-slate-600">{totalRemainder.toLocaleString()}원</span>
               </div>
             </div>

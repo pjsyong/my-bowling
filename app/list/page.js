@@ -16,9 +16,8 @@ export default function EventListPage() {
           .from('event')
           .select(`
             *,
-            entry(count) 
+            entry(*) // 조건을 제거하고 전체 데이터를 가져옵니다.
           `)
-          .eq('entry.pay_person', true)
           .order('event_date', { ascending: false });
 
         if (error) throw error;
@@ -67,11 +66,19 @@ export default function EventListPage() {
       <div className="grid gap-4 md:gap-6">
         {events.length > 0 ? (
           events.map((event) => {
+            const totalCount = event.entry?.length || 0;
+            const confirmedCount = event.entry?.filter(e => 
+                e.result === true && e.pay_person === true
+              ).length || 0;
+            const confirmedCount2 = event.entry?.filter(e => e.result === true).length || 0;
+            const resultCount = event.entry?.filter(e => e.result === true).length || 0;
+            const maxCount = event.max_people || 0; // DB 컬럼명에 맞춰 수정
             const isClosed = event.end;
             const paidCount = event.entry?.[0]?.count || 0;
+            
             const { prizes, totalRemainder } = getPrizeData(
               event.event_pay_person, 
-              paidCount, 
+              confirmedCount, 
               { r1: event.ratio_1, r2: event.ratio_2, r3: event.ratio_3 }, 
               event.frame
             );
@@ -109,9 +116,21 @@ export default function EventListPage() {
                     }`}>
                       {event.title}
                     </h3>
-                    <p className="text-[10px] text-slate-400 font-bold mt-1.5 uppercase tracking-wider">
-                      납부 인원: <span className="text-indigo-600">{paidCount}명</span>
-                    </p>
+                    
+                    <div className="flex items-center gap-3 mt-2">
+                      {/* 전체 신청 현황 */}
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                        신청 <span className="text-slate-600">{totalCount}명</span>
+                      </p>
+
+                      {/* 확정 인원 / 최대 인원 (max_people 활용) */}
+                      <div className="flex items-center gap-1.5 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">
+                        <span className="text-[9px] font-black text-emerald-600 uppercase">확정</span>
+                        <p className="text-[11px] font-black text-emerald-700 tracking-tighter">
+                          {confirmedCount2} <span className="text-emerald-300 mx-0.5">/</span> {maxCount}명
+                        </p>
+                      </div>
+                    </div>
                   </div>
 
                   {/* 상금 정보 카드형 레이아웃 */}

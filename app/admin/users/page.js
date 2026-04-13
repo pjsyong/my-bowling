@@ -131,9 +131,12 @@ export default function UserManagementPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
-            {users.map((user) => (
+           {users.map((user, index) => (
               <tr key={user.user_id} className="hover:bg-slate-50/50 transition-colors">
-                <td className="px-8 py-6 text-center text-slate-300 font-black">{user.user_id}</td>
+                {/* index는 0부터 시작하므로 1을 더해줍니다 */}
+                <td className="px-8 py-6 text-center text-slate-300 font-black">
+                  {index + 1}
+                </td>
                 <td className="px-8 py-6 font-bold text-slate-800">{user.name}</td>
                 <td className="px-8 py-6 text-center">
                   {user.type_pro === 1 ? (
