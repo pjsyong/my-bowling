@@ -7,6 +7,7 @@ import Link from 'next/link'; // ← 반드시 있어야 합니다!
 export default function AdminPage() {
   const [password, setPassword] = useState('');
   const [isAuth, setIsAuth] = useState(false);
+  const ADMIN_PASSWORD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD;
 
   // 1. 세션 체크: 한 번 로그인하면 탭을 닫기 전까지 유지
   useEffect(() => {
@@ -18,7 +19,7 @@ export default function AdminPage() {
 
   const handleLogin = (e) => {
     e.preventDefault();
-    if (password === '1234') { // 실제 사용하실 비밀번호로 변경 가능
+    if (ADMIN_PASSWORD && password === ADMIN_PASSWORD) {
       sessionStorage.setItem('admin_auth', 'true');
       setIsAuth(true);
     } else {
