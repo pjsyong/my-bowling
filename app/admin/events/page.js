@@ -17,6 +17,24 @@ export default function EventManagementPage() {
   const [editingEvent, setEditingEvent] = useState(null);
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
+  const formatDateTimeLocal = (dateString) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    
+    // 수동으로 9시간을 더하지 마세요. 
+    // 대신 로컬 시간을 기준으로 YYYY-MM-DDTHH:mm 형식을 만듭니다.
+    const offset = date.getTimezoneOffset() * 60000; // 현지 타임존 오프셋 계산
+    const localISOTime = new Date(date.getTime() - offset).toISOString().slice(0, 16);
+    
+    return localISOTime;
+  };
+
+  const formatForInput = (dateStr) => {
+    if (!dateStr) return '';
+    // .split('.')[0]로 밀리초를 제거하고 .slice(0, 16)으로 분까지만 가져옴
+    return dateStr.replace('Z', '').split('.')[0].slice(0, 16);
+  };
+
   const showToast = (message, type = 'success') => {
     setToast({ show: true, message, type });
     setTimeout(() => setToast({ show: false, message: '', type: 'success' }), 2000);
@@ -25,12 +43,17 @@ export default function EventManagementPage() {
   const [formData, setFormData] = useState({
     title: '',
     event_type: 'WED',
-    event_date: new Date().toISOString().split('T')[0],
+    event_date: new Date().toISOString().slice(0, 16),
     event_pay_person: 0,
     event_pay_team: 0,
     max_people: 20,
     progress: true,
-    end: false
+    end: false,
+    // 추가된 필드
+    ratio_1: 50, // 기본값 50%
+    ratio_2: 30, // 기본값 30%
+    ratio_3: 20, // 기본값 20%
+    frame: 4     // 기본값 4게임
   });
 
   const fetchEvents = useCallback(async () => {
@@ -80,6 +103,18 @@ export default function EventManagementPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // 배분율 합계 체크
+    const totalRatio = 
+      Number(formData.ratio_1 || 0) + 
+      Number(formData.ratio_2 || 0) + 
+      Number(formData.ratio_3 || 0);
+
+    if (totalRatio !== 100) {
+      showToast('상금 배분율의 합계가 100%여야 합니다.', 'error');
+      return;
+    }
+
     try {
       const submitData = {
         title: formData.title,
@@ -89,7 +124,12 @@ export default function EventManagementPage() {
         event_pay_team: parseInt(formData.event_pay_team || 0),
         max_people: parseInt(formData.max_people),
         progress: formData.progress,
-        end: formData.end
+        end: formData.end,
+        // 추가된 필드들
+        ratio_1: parseInt(formData.ratio_1 || 0),
+        ratio_2: parseInt(formData.ratio_2 || 0),
+        ratio_3: parseInt(formData.ratio_3 || 0),
+        frame: parseInt(formData.frame || 1)
       };
 
       if (editingEvent) {
@@ -112,14 +152,40 @@ export default function EventManagementPage() {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('정말로 삭제하시겠습니까?')) return;
+    if (!confirm('대회를 삭제하면 해당 대회의 모든 신청자 데이터와 점수 기록이 영구적으로 삭제됩니다. 정말로 삭제하시겠습니까?')) return;
+    
     try {
-      const { error } = await supabase.from('event').delete().eq('event_id', Number(id));
-      if (error) throw error;
-      showToast('삭제되었습니다.');
+      const eventId = Number(id);
+
+      // 1. score 테이블에서 해당 이벤트 데이터 삭제
+      const { error: scoreError } = await supabase
+        .from('score')
+        .delete()
+        .eq('event_id', eventId);
+      
+      if (scoreError) throw scoreError;
+
+      // 2. entry 테이블에서 해당 이벤트 데이터 삭제
+      const { error: entryError } = await supabase
+        .from('entry')
+        .delete()
+        .eq('event_id', eventId);
+      
+      if (entryError) throw entryError;
+
+      // 3. 마지막으로 event 테이블에서 대회 삭제
+      const { error: eventError } = await supabase
+        .from('event')
+        .delete()
+        .eq('event_id', eventId);
+
+      if (eventError) throw eventError;
+
+      showToast('대회와 관련된 모든 데이터가 삭제되었습니다.');
       fetchEvents();
     } catch (error) {
-      showToast('삭제 실패', "error");
+      console.error('삭제 작업 중 오류:', error);
+      showToast('삭제 실패: ' + error.message, "error");
     }
   };
 
@@ -150,7 +216,17 @@ export default function EventManagementPage() {
           <button 
             onClick={() => {
               setEditingEvent(null);
-              setFormData({ title: '', event_type: 'WED', event_date: new Date().toISOString().split('T')[0], event_pay_person: 0, event_pay_team: 0, max_people: 20, progress: true, end: false });
+              setFormData({ 
+                title: '', 
+                event_type: 'WED', 
+                event_date: formatDateTimeLocal(new Date()), // 현재 날짜와 시간을 기본값으로
+                event_pay_person: 0, 
+                event_pay_team: 0, 
+                max_people: 20, 
+                progress: true, 
+                end: false,
+                ratio_1: 50, ratio_2: 30, ratio_3: 20, frame: 4
+              });
               setIsModalOpen(true);
             }}
             className="bg-slate-900 text-white px-8 py-4 rounded-2xl flex items-center gap-2 hover:bg-slate-800 transition-all shadow-xl font-bold"
@@ -172,7 +248,7 @@ export default function EventManagementPage() {
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button onClick={() => { 
                     setEditingEvent(event); 
-                    setFormData({ ...event, event_date: event.event_date?.split('T')[0] }); 
+                    setFormData({ ...event, event_date: formatForInput(event.event_date) }); 
                     setIsModalOpen(true); 
                   }} className="p-2 text-slate-400 hover:text-slate-900"><Pencil size={18} /></button>
                   <button onClick={() => handleDelete(event.event_id)} className="p-2 text-slate-400 hover:text-red-500"><Trash2 size={18} /></button>
@@ -183,7 +259,9 @@ export default function EventManagementPage() {
               
               <div className="space-y-4 mb-8">
                 <div className="flex items-center gap-2 text-slate-400 text-sm font-bold">
-                  <Calendar size={16} /> {new Date(event.event_date).toLocaleDateString()}
+                  <Calendar size={16} /> 
+                  {/* toLocaleString 대신 직접 문자열을 정리해서 보여줌 */}
+                  {event.event_date.replace('T', ' ').slice(0, 16)}
                 </div>
                 
                 <div className="flex flex-wrap gap-2">
@@ -274,17 +352,27 @@ export default function EventManagementPage() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest ml-1">유형</label>
-                      <select value={formData.event_type} onChange={(e) => setFormData({...formData, event_type: e.target.value})} className="w-full mt-2 px-6 py-4 bg-slate-50 rounded-2xl border-none font-bold appearance-none outline-none">
+                      <select 
+                        value={formData.event_type} 
+                        onChange={(e) => setFormData({...formData, event_type: e.target.value})} 
+                        className="w-full mt-2 px-6 py-4 bg-slate-50 rounded-2xl border-none font-bold appearance-none outline-none"
+                      >
                         <option value="WED">수발이 (WED)</option>
                         <option value="RANK">랭킹전 (RANK)</option>
                       </select>
                     </div>
                     <div>
-                      <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest ml-1">날짜</label>
-                      <input required type="date" value={formData.event_date} onChange={(e) => setFormData({...formData, event_date: e.target.value})} className="w-full mt-2 px-6 py-4 bg-slate-50 rounded-2xl border-none font-bold outline-none" />
+                      <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest ml-1">날짜 및 시간</label>
+                      <input 
+                        required 
+                        type="datetime-local" 
+                        value={formData.event_date} 
+                        onChange={(e) => setFormData({...formData, event_date: e.target.value})} 
+                        className="w-full mt-2 px-6 py-4 bg-slate-50 rounded-2xl border-none font-bold outline-none" 
+                      />
                     </div>
                   </div>
 
@@ -292,7 +380,68 @@ export default function EventManagementPage() {
                     <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest ml-1">최대 인원</label>
                     <input type="number" value={formData.max_people} onChange={(e) => setFormData({...formData, max_people: e.target.value})} className="w-full mt-2 px-6 py-4 bg-slate-50 rounded-2xl border-none font-bold outline-none" />
                   </div>
+                  <div className="bg-amber-50/50 p-6 rounded-[32px] border border-amber-100/50 space-y-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Banknote size={16} className="text-amber-600" />
+                      <span className="text-[11px] font-black text-amber-600 uppercase tracking-widest">상금 배분 및 게임 설정</span>
+                    </div>
 
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">게임 수 (Frame)</label>
+                        <input 
+                          type="number" 
+                          value={formData.frame} 
+                          onChange={(e) => setFormData({...formData, frame: e.target.value})} 
+                          className="w-full mt-2 px-5 py-3 bg-white rounded-2xl border-none font-black text-base outline-none"
+                          placeholder="예: 4"
+                        />
+                      </div>
+                      <div className="flex items-end">
+                        <p className="text-[10px] text-slate-400 font-bold pb-4">* 총 수금액을 게임 수로 나눕니다.</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="text-[10px] font-black text-indigo-500 uppercase tracking-widest ml-1">1등 (%)</label>
+                        <input 
+                          type="number" 
+                          value={formData.ratio_1} 
+                          onChange={(e) => setFormData({...formData, ratio_1: e.target.value})} 
+                          className="w-full mt-2 px-5 py-3 bg-white rounded-2xl border-none font-black text-base outline-none text-center"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-black text-purple-500 uppercase tracking-widest ml-1">2등 (%)</label>
+                        <input 
+                          type="number" 
+                          value={formData.ratio_2} 
+                          onChange={(e) => setFormData({...formData, ratio_2: e.target.value})} 
+                          className="w-full mt-2 px-5 py-3 bg-white rounded-2xl border-none font-black text-base outline-none text-center"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-black text-emerald-500 uppercase tracking-widest ml-1">3등 (%)</label>
+                        <input 
+                          type="number" 
+                          value={formData.ratio_3} 
+                          onChange={(e) => setFormData({...formData, ratio_3: e.target.value})} 
+                          className="w-full mt-2 px-5 py-3 bg-white rounded-2xl border-none font-black text-base outline-none text-center"
+                        />
+                      </div>
+                    </div>
+                    
+                    {/* 배분율 합계 체크 (선택사항) */}
+                    <div className="text-right">
+                      <span className={`text-[10px] font-black ${
+                        (Number(formData.ratio_1) + Number(formData.ratio_2) + Number(formData.ratio_3)) === 100 
+                        ? 'text-emerald-500' : 'text-red-400'
+                      }`}>
+                        합계: {Number(formData.ratio_1) + Number(formData.ratio_2) + Number(formData.ratio_3)}%
+                      </span>
+                    </div>
+                  </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block">대시보드 노출</label>

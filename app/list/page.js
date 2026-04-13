@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Calendar, Trophy, ChevronRight } from 'lucide-react';
+import { Calendar, Trophy, ChevronRight, Hash } from 'lucide-react';
 import Link from 'next/link';
 
 export default function EventListPage() {
@@ -12,10 +12,13 @@ export default function EventListPage() {
   useEffect(() => {
     async function fetchEvents() {
       try {
-        // event_date 기준 내림차순(최신순) 정렬
         const { data, error } = await supabase
           .from('event')
-          .select('*')
+          .select(`
+            *,
+            entry(count) 
+          `)
+          .eq('entry.pay_person', true)
           .order('event_date', { ascending: false });
 
         if (error) throw error;
@@ -29,75 +32,136 @@ export default function EventListPage() {
     fetchEvents();
   }, []);
 
-  if (loading) return <div className="p-10 text-center font-black text-slate-400 tracking-widest">LOADING...</div>;
+  const formatKoreanDateTime = (dateString) => {
+    if (!dateString) return '일정 미정';
+    const cleanDate = dateString.replace('T', ' ').split('.')[0].slice(0, 16);
+    const [datePart, timePart] = cleanDate.split(' ');
+    const [year, month, day] = datePart.split('-');
+    const [hour, minute] = timePart.split(':');
+    const week = ['일', '월', '화', '수', '목', '금', '토']; // 모바일을 위해 요일 단축
+    const dayOfWeek = week[new Date(datePart).getDay()];
+    return `${year}. ${month}. ${day}. (${dayOfWeek}) ${hour}:${minute}`;
+  };
+
+  const getPrizeData = (pay, count, ratios, frame) => {
+    if (!pay || !count || !frame || frame === 0) return { prizes: [0, 0, 0], totalRemainder: 0 };
+    const totalPool = pay * count;
+    const perGamePool = totalPool / frame;
+    const p1 = Math.floor((perGamePool * (ratios.r1 / 100)) / 1000) * 1000;
+    const p2 = Math.floor((perGamePool * (ratios.r2 / 100)) / 1000) * 1000;
+    const p3 = Math.floor((perGamePool * (ratios.r3 / 100)) / 1000) * 1000;
+    const totalPrizePerGame = p1 + p2 + p3;
+    const totalRemainder = totalPool - (totalPrizePerGame * frame);
+    return { prizes: [p1, p2, p3], totalRemainder: totalRemainder };
+  };
+
+  if (loading) return <div className="p-10 text-center font-black text-slate-400 tracking-widest uppercase">Loading Events...</div>;
 
   return (
-    <section className="max-w-5xl mx-auto py-12 px-6 font-sans">
-      <div className="flex flex-col gap-2 mb-10">
-        <h2 className="text-4xl font-black text-slate-900 tracking-tight italic uppercase">대회 목록</h2>
-        <p className="text-slate-400 font-bold uppercase text-[10px] tracking-[0.2em]">Upcoming & Past Events</p>
+    <section className="max-w-5xl mx-auto py-8 md:py-12 px-4 md:px-6 font-sans">
+      <div className="flex flex-col gap-1 mb-8 md:mb-10">
+        <h2 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight italic uppercase">대회 목록</h2>
+        <p className="text-slate-400 font-bold uppercase text-[9px] md:text-[10px] tracking-[0.2em]">Upcoming & Past Events</p>
       </div>
 
-      <div className="grid gap-6">
+      <div className="grid gap-4 md:gap-6">
         {events.length > 0 ? (
           events.map((event) => {
             const isClosed = event.end;
+            const paidCount = event.entry?.[0]?.count || 0;
+            const { prizes, totalRemainder } = getPrizeData(
+              event.event_pay_person, 
+              paidCount, 
+              { r1: event.ratio_1, r2: event.ratio_2, r3: event.ratio_3 }, 
+              event.frame
+            );
 
             return (
               <Link 
                 key={event.event_id} 
-                // ✅ 비활성화 로직 제거: 마감 여부와 상관없이 상세 페이지로 이동
                 href={`/list/${event.event_id}`} 
-                className={`group bg-white p-8 rounded-[32px] shadow-sm border border-slate-100 transition-all flex items-center justify-between hover:border-indigo-200 hover:shadow-md cursor-pointer ${
+                className={`group bg-white p-5 md:p-8 rounded-[24px] md:rounded-[32px] shadow-sm border border-slate-100 transition-all flex flex-col md:flex-row md:items-center justify-between hover:border-indigo-200 hover:shadow-md cursor-pointer ${
                   isClosed ? 'bg-slate-50/50' : '' 
                 }`}
               >
-                <div className="flex flex-col gap-4">
-                  <div className="flex items-center gap-3">
+                <div className="flex flex-col gap-4 md:gap-5 w-full">
+                  {/* 상단 뱃지 및 날짜 영역 */}
+                  <div className="flex flex-wrap items-center gap-2 md:gap-3">
                     {isClosed ? (
-                      <span className="bg-slate-200 text-slate-500 text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-tighter">
-                        마감
-                      </span>
+                      <span className="bg-slate-200 text-slate-500 text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase">마감</span>
                     ) : (
-                      <span className="bg-emerald-50 text-emerald-600 text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-tighter">
-                        모집 중
-                      </span>
+                      <span className="bg-emerald-50 text-emerald-600 text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase">모집 중</span>
                     )}
-                    
-                    <p className="text-slate-400 text-xs font-bold flex items-center gap-1.5">
-                      <Calendar size={14} className="text-slate-300" />
-                      <span className="mt-0.5">진행일: {event.event_date || '일정 미정'}</span>
-                    </p>
+                    <div className="flex items-center gap-1.5 text-slate-400 text-[10px] md:text-[11px] font-bold">
+                      <Calendar size={13} className="text-slate-300" />
+                      <span>{formatKoreanDateTime(event.event_date)}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-indigo-400 text-[10px] md:text-[11px] font-bold">
+                      <Hash size={13} className="text-indigo-200" />
+                      <span>{event.frame || 0}G</span>
+                    </div>
                   </div>
                   
-                  <h3 className={`text-2xl font-black tracking-tight transition-colors ${
-                    isClosed ? 'text-slate-500' : 'text-slate-900 group-hover:text-indigo-600'
-                  }`}>
-                    {event.title}
-                  </h3>
+                  {/* 제목 영역 */}
+                  <div>
+                    <h3 className={`text-xl md:text-2xl font-black tracking-tight leading-tight transition-colors ${
+                      isClosed ? 'text-slate-500' : 'text-slate-900 group-hover:text-indigo-600'
+                    }`}>
+                      {event.title}
+                    </h3>
+                    <p className="text-[10px] text-slate-400 font-bold mt-1.5 uppercase tracking-wider">
+                      납부 인원: <span className="text-indigo-600">{paidCount}명</span>
+                    </p>
+                  </div>
 
-                  <div className="flex gap-5 items-center text-slate-400 text-sm font-bold">
-                    <div className="flex items-center gap-1.5">
-                      <Trophy size={16} className={isClosed ? 'text-slate-200' : 'text-indigo-200'} />
-                      <span>개인 {event.event_pay_person?.toLocaleString() || 0}원</span>
+                  {/* 상금 정보 카드형 레이아웃 */}
+                  <div className="space-y-3 md:space-y-4">
+                    <div className="flex flex-wrap gap-1.5 md:gap-2 items-center">
+                      <div className="flex items-center gap-1.5 bg-indigo-50/50 px-2.5 py-1.5 rounded-xl border border-indigo-100">
+                        <span className="text-[9px] font-black text-indigo-400">1등</span>
+                        <span className="text-xs md:text-sm font-black text-indigo-700">{prizes[0].toLocaleString()}원</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 bg-purple-50/50 px-2.5 py-1.5 rounded-xl border border-purple-100">
+                        <span className="text-[9px] font-black text-purple-400">2등</span>
+                        <span className="text-xs md:text-sm font-black text-purple-700">{prizes[1].toLocaleString()}원</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 bg-emerald-50/50 px-2.5 py-1.5 rounded-xl border border-emerald-100">
+                        <span className="text-[9px] font-black text-emerald-400">3등</span>
+                        <span className="text-xs md:text-sm font-black text-emerald-700">{prizes[2].toLocaleString()}원</span>
+                      </div>
+                      
+                      {totalRemainder > 0 && (
+                        <div className="flex items-center gap-1.5 bg-amber-50 px-2.5 py-1.5 rounded-xl border border-amber-100">
+                          <span className="text-[8px] font-black text-amber-500 uppercase italic">Rem</span>
+                          <span className="text-[10px] font-bold text-amber-600 tracking-tight">{totalRemainder.toLocaleString()}원</span>
+                        </div>
+                      )}
                     </div>
-                    <div className="flex items-center gap-1.5">
-                      <Trophy size={16} className={isClosed ? 'text-slate-200' : 'text-purple-200'} />
-                      <span>팀전 {event.event_pay_team?.toLocaleString() || 0}원</span>
+
+                    {/* 참가 비용 (모바일에서는 간격 조정) */}
+                    <div className="flex gap-3 md:gap-4 pt-3 border-t border-slate-50">
+                      <div className="flex items-center gap-1 text-slate-400 text-[10px] md:text-[11px] font-bold">
+                        <Trophy size={13} className="text-indigo-200" />
+                        <span>개인 {event.event_pay_person?.toLocaleString()}원</span>
+                      </div>
+                      <div className="flex items-center gap-1 text-slate-400 text-[10px] md:text-[11px] font-bold border-l border-slate-100 pl-3 md:pl-4">
+                        <Trophy size={13} className="text-purple-200" />
+                        <span>팀 {event.event_pay_team?.toLocaleString()}원</span>
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                {/* 우측 화살표 아이콘: 마감되어도 호버 효과 유지 */}
-                <div className="p-4 rounded-2xl transition-all bg-slate-50 text-slate-400 group-hover:bg-indigo-600 group-hover:text-white">
-                  <ChevronRight size={24} />
+                {/* 화살표 버튼: 모바일에서는 하단에 작게 배치되거나 숨길 수 있지만, 여기서는 우측 상단 정렬 느낌으로 유지 */}
+                <div className="mt-4 md:mt-0 md:ml-4 self-end md:self-center p-3 md:p-4 rounded-xl md:rounded-2xl transition-all bg-slate-50 text-slate-400 group-hover:bg-indigo-600 group-hover:text-white">
+                  <ChevronRight size={20} />
                 </div>
               </Link>
             );
           })
         ) : (
-          <div className="bg-slate-50 p-20 rounded-[40px] border border-dashed border-slate-200 text-center">
-            <p className="text-slate-400 font-black tracking-tighter italic">현재 등록된 대회가 없습니다.</p>
+          <div className="bg-slate-50 p-12 md:p-20 rounded-[32px] md:rounded-[40px] border border-dashed border-slate-200 text-center">
+            <p className="text-slate-400 font-black tracking-tighter italic uppercase text-sm">No events found.</p>
           </div>
         )}
       </div>
