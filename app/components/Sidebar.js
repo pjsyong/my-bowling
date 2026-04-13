@@ -9,7 +9,7 @@ import { Trophy, List, User, ChevronLeft, ChevronRight, UserPlus } from 'lucide-
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(true);
 
   useEffect(() => {
     const width = isCollapsed ? '80px' : '256px';
