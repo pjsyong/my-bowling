@@ -54,6 +54,48 @@ export default function IntegratedRecordPage() {
     setRankings(combined || []);
   }
 
+
+  const calculateWinners = () => {
+    const winnerMap = {}; // { '이름': 총상금 }
+    const { prizes } = getPrizeData(
+      selectedEvent?.event_pay_person,
+      rankings.length,
+      { r1: selectedEvent?.ratio_1, r2: selectedEvent?.ratio_2, r3: selectedEvent?.ratio_3 },
+      selectedEvent?.frame
+    );
+
+    // 각 게임별(1G~5G)로 상위 3명을 찾아 상금 배분
+    for (let gameIdx = 0; gameIdx < (selectedEvent?.frame || 5); gameIdx++) {
+      const gameRankings = [...rankings]
+        .map(r => ({ name: r.user?.name, score: r.scores[gameIdx] || 0 }))
+        .sort((a, b) => b.score - a.score);
+
+      gameRankings.forEach((player, rank) => {
+        if (rank < 3 && player.score > 0) { // 1, 2, 3등만
+          const prizeMoney = prizes[rank];
+          winnerMap[player.name] = (winnerMap[player.name] || 0) + prizeMoney;
+        }
+      });
+    }
+
+    // 객체를 배열로 변환 후 상금 높은 순으로 정렬
+    return Object.entries(winnerMap)
+      .map(([name, totalPrize]) => ({ name, totalPrize }))
+      .sort((a, b) => b.totalPrize - a.totalPrize);
+  };
+
+  const getPrizeData = (pay, count, ratios, frame) => {
+    if (!pay || !count || !frame || frame === 0) return { prizes: [0, 0, 0], totalRemainder: 0 };
+    const totalPool = pay * count;
+    const perGamePool = totalPool / frame;
+    const p1 = Math.floor((perGamePool * (ratios.r1 / 100)) / 1000) * 1000;
+    const p2 = Math.floor((perGamePool * (ratios.r2 / 100)) / 1000) * 1000;
+    const p3 = Math.floor((perGamePool * (ratios.r3 / 100)) / 1000) * 1000;
+    const totalPrizePerGame = p1 + p2 + p3;
+    const totalRemainder = totalPool - (totalPrizePerGame * frame);
+    return { prizes: [p1, p2, p3], totalRemainder: totalRemainder };
+  };
+
   const selectedEvent = events.find(e => e.event_id === selectedEventId);
 
   if (loading) return <div className="p-10 text-slate-400 animate-pulse text-center font-light">Loading Tournament Data...</div>;
@@ -107,7 +149,7 @@ export default function IntegratedRecordPage() {
       </div>
 
       {/* --- Game Leaders (공통: 모바일 가로 스크롤 / PC 그리드) --- */}
-      <div className="mb-10 md:mb-12">
+      <div className="mb-4 md:mb-6">
         <div className="flex items-center gap-2 mb-4 md:mb-6 px-1">
           <h3 className="text-lg md:text-xl font-bold tracking-tight text-slate-800">Game Leaders</h3>
           <div className="h-[1px] flex-1 bg-gray-100 ml-4"></div>
@@ -132,6 +174,62 @@ export default function IntegratedRecordPage() {
               </div>
             );
           })}
+        </div>
+      </div>
+
+      {/* --- Prize Amount Cards (Title Removed) --- */}
+      <div className="mb-10 md:mb-12">
+        {(() => {
+          // 현재 선택된 이벤트 데이터를 기반으로 상금 계산
+          const paidCount = rankings.length; 
+          const { prizes, totalRemainder } = getPrizeData(
+            selectedEvent?.event_pay_person,
+            paidCount,
+            { r1: selectedEvent?.ratio_1, r2: selectedEvent?.ratio_2, r3: selectedEvent?.ratio_3 },
+            selectedEvent?.frame
+          );
+
+          return (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <PrizeBox label="1st Prize" amount={prizes[0]} color="bg-indigo-50 text-indigo-700 border-indigo-100" rank="🥇" />
+              <PrizeBox label="2nd Prize" amount={prizes[1]} color="bg-purple-50 text-purple-700 border-purple-100" rank="🥈" />
+              <PrizeBox label="3rd Prize" amount={prizes[2]} color="bg-emerald-50 text-emerald-700 border-emerald-100" rank="🥉" />
+              <div className="flex flex-col justify-center p-5 md:p-6 bg-slate-50 rounded-[24px] border border-slate-100 shadow-sm">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Remainder</span>
+                <span className="text-lg font-bold text-slate-600">{totalRemainder.toLocaleString()}원</span>
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+
+      {/* --- Prize Winners List --- */}
+      <div className="mt-6 md:mt-8">
+        <div className="bg-white rounded-[32px] border border-slate-100 p-6 md:p-8 shadow-sm">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-sm md:text-base font-bold text-slate-800 italic uppercase tracking-wider">Prize Winners</h3>
+            <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Sorted by Amount</span>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {calculateWinners().map((winner, idx) => (
+              <div key={idx} className="flex items-center justify-between p-4 bg-slate-50/50 rounded-2xl border border-slate-50">
+                <div className="flex items-center gap-3">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black 
+                    ${idx === 0 ? 'bg-amber-100 text-amber-600' : 'bg-white text-slate-400'}`}>
+                    {idx + 1}
+                  </div>
+                  <span className="font-bold text-slate-700">{winner.name}</span>
+                </div>
+                <span className="font-black text-indigo-600">
+                  {winner.totalPrize.toLocaleString()}<span className="text-[10px] ml-0.5">원</span>
+                </span>
+              </div>
+            ))}
+            {calculateWinners().length === 0 && (
+              <p className="col-span-2 text-center py-4 text-slate-400 text-xs font-medium italic">수령 데이터가 없습니다.</p>
+            )}
+          </div>
         </div>
       </div>
 
@@ -295,6 +393,18 @@ function StatCard({ label, value, icon }) {
         <div className="opacity-80 scale-90 md:scale-100">{icon}</div>
       </div>
       <div className="text-lg md:text-2xl font-bold tracking-tight text-slate-800 truncate">{value}</div>
+    </div>
+  );
+}
+
+function PrizeBox({ label, amount, color, rank }) {
+  return (
+    <div className={`flex items-center justify-between p-5 md:p-6 rounded-[24px] border ${color} shadow-sm`}>
+      <div>
+        <p className="text-[10px] font-black uppercase tracking-widest opacity-70 mb-1">{label}</p>
+        <p className="text-xl md:text-2xl font-black">{amount.toLocaleString()}<span className="text-sm font-bold ml-1">원</span></p>
+      </div>
+      <span className="text-3xl opacity-80">{rank}</span>
     </div>
   );
 }
