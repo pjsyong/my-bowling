@@ -4,6 +4,11 @@ import Sidebar from "./components/Sidebar";
 export const metadata = {
   title: "Subal Bowl Management",
   description: "Bowling Club Management System",
+  colorScheme: 'light only',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default', // 블랙이 아닌 기본값(화이트) 유지
+  },
 };
 
 export default function RootLayout({ children }) {
