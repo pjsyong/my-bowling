@@ -18,7 +18,7 @@ export default function Sidebar() {
 
   // 메뉴 순서 조정: 개인 기록 바로 다음에 회원 등록 배치
   const menuItems = [
-    { name: '대회 기록', icon: <Trophy size={18} />, path: '/dash' },
+    { name: '대회 기록', icon: <Trophy size={18} />, path: '/' },
     { name: '대회 목록', icon: <List size={18} />, path: '/list' },
     { name: '개인 기록', icon: <User size={18} />, path: '/profile' },
     { name: '회원 등록', icon: <UserPlus size={18} />, path: '/register' }, // 여기에 위치

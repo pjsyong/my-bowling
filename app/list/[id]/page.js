@@ -1,319 +1,276 @@
 'use client';
 
-import React, { useState, useEffect, use } from 'react';
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Trophy, Users, Star, Calendar, ChevronDown, Target } from 'lucide-react';
+import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList } from 'recharts';
 import { supabase } from '@/lib/supabase';
-import { 
-  ArrowLeft, Calendar, Check, UserCheck, Users2, Plus, X, Phone, User, AlertCircle, Banknote, ShieldCheck
-} from 'lucide-react';
-import Link from 'next/link';
 
-export default function EventDetailPage({ params }) {
-  const resolvedParams = use(params);
-  const eventId = resolvedParams.id;
-
-  const [entries, setEntries] = useState([]);
-  const [eventInfo, setEventInfo] = useState(null);
+export default function RecordPage() {
+  const [events, setEvents] = useState([]);
+  const [selectedEventId, setSelectedEventId] = useState(null);
+  const [rankings, setRankings] = useState([]);
   const [loading, setLoading] = useState(true);
-  
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formData, setFormData] = useState({
-    user_name: '',
-    user_phone: '',
-    pay_person: false,
-    pay_team: true 
-  });
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
-  const fetchEventData = async () => {
-    try {
-      // 1. 대회 정보
+  useEffect(() => {
+    async function initData() {
       const { data: eventData } = await supabase
         .from('event')
         .select('*')
-        .eq('event_id', eventId)
-        .single();
-      setEventInfo(eventData);
-
-      // 2. 신청 명단 가져오기
-      const { data: entryData, error: entryError } = await supabase
-        .from('entry')
-        .select('*')
-        .eq('event_id', eventId);
-
-      if (entryError) throw entryError;
-
-      // 3. ✅ 신청 유저 정보 가져오기 (type_pro 컬럼 추가)
-      const userIds = entryData.map(e => e.user_id);
-      const { data: userData, error: userError } = await supabase
-        .from('user')
-        .select('user_id, name, phone, type_pro') // type_pro 필드 추가
-        .in('user_id', userIds);
-
-      if (userError) throw userError;
-
-      // 4. 데이터 병합
-      const combinedData = entryData.map(entry => ({
-        ...entry,
-        user: userData.find(u => u.user_id === entry.user_id) || null
-      }));
-
-      // 정렬: 입금 여부 -> 확정 여부 -> 순번
-      const sortedData = combinedData.sort((a, b) => {
-        if (a.payment_status !== b.payment_status) return a.payment_status ? -1 : 1;
-        if (a.result !== b.result) return a.result ? -1 : 1;
-        return a.entry_id - b.entry_id;
-      });
-
-      setEntries(sortedData);
-    } catch (error) {
-      console.error('데이터 로드 오류:', error.message);
-    } finally {
+        .order('event_date', { ascending: false });
+      
+      setEvents(eventData || []);
+      const activeEvent = eventData?.find(e => e.progress === true) || eventData?.[0];
+      if (activeEvent) setSelectedEventId(activeEvent.event_id);
       setLoading(false);
     }
-  };
+    initData();
+  }, []);
 
   useEffect(() => {
-    fetchEventData();
-  }, [eventId]);
+    if (selectedEventId) fetchRankings(selectedEventId);
+  }, [selectedEventId]);
 
-  const maskPhoneNumber = (phone) => {
-    if (!phone) return '번호 없음';
-    const pure = phone.replace(/[^0-9]/g, '');
-    if (pure.length >= 10) {
-      return `${pure.substring(0, 3)}-****-${pure.substring(pure.length - 4)}`;
-    }
-    return phone;
-  };
+  async function fetchRankings(eventId) {
+    const { data: entryData } = await supabase.from('entry').select('*, user:user_id(name)').eq('event_id', eventId);
+    const { data: scoreData } = await supabase.from('score').select('*').eq('event_id', eventId);
 
-  const formatEventDate = (dateString) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    return new Intl.DateTimeFormat('ko-KR', {
-      year: 'numeric', month: 'long', day: 'numeric', 
-      weekday: 'long', hour: '2-digit', hour12: false 
-    }).format(date);
-  };
+    const combined = entryData?.map(entry => {
+      const s = scoreData?.find(score => score.user_id === entry.user_id) || {};
+      const scores = [s.game_1 || 0, s.game_2 || 0, s.game_3 || 0, s.game_4 || 0, s.game_5 || 0];
+      const total = scores.reduce((a, b) => a + b, 0);
+      return { ...entry, total, avg: (total / 5).toFixed(1), scores };
+    }).sort((a, b) => b.total - a.total);
 
-  const calculateTotal = () => {
-    let total = 0;
-    if (formData.pay_team) total += (eventInfo?.event_pay_team || 0);
-    if (formData.pay_person) total += (eventInfo?.event_pay_person || 0);
-    return total;
-  };
+    setRankings(combined || []);
+  }
 
-  const handlePhoneChange = (e) => {
-    const value = e.target.value.replace(/[^0-9]/g, '');
-    let formatted = value;
-    if (value.length > 3 && value.length <= 7) {
-      formatted = `${value.slice(0, 3)}-${value.slice(3)}`;
-    } else if (value.length > 7) {
-      formatted = `${value.slice(0, 3)}-${value.slice(3, 7)}-${value.slice(7, 11)}`;
-    }
-    setFormData({ ...formData, user_phone: formatted });
-  };
+  const selectedEvent = events.find(e => e.event_id === selectedEventId);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (isSubmitting) return;
-    setIsSubmitting(true);
-    try {
-      const { data: userData } = await supabase
-        .from('user')
-        .select('user_id')
-        .eq('name', formData.user_name.trim())
-        .eq('phone', formData.user_phone.trim())
-        .maybeSingle();
-
-      if (!userData) {
-        alert('회원 정보를 찾을 수 없습니다.');
-        setIsSubmitting(false);
-        return;
-      }
-
-      const { error: insertError } = await supabase.from('entry').insert([
-        {
-          event_id: eventId,
-          user_id: userData.user_id,
-          pay_person: formData.pay_person,
-          pay_team: formData.pay_team,
-          payment_amount: calculateTotal(),
-          payment_status: false,
-          result: false
-        }
-      ]);
-
-      if (insertError) {
-        if (insertError.code === '23505') alert('이미 신청되었습니다.');
-        else throw insertError;
-      } else {
-        alert('신청 완료!');
-        setIsModalOpen(false);
-        setFormData({ user_name: '', user_phone: '', pay_person: false, pay_team: true });
-        fetchEventData();
-      }
-    } catch (error) {
-      alert('오류 발생');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const confirmedCount = entries.filter(entry => entry.result).length;
-  const maxCount = eventInfo?.max_people || 0;
-
-  if (loading) return <div className="p-10 text-center font-black text-slate-400 italic text-xl">데이터 로딩 중...</div>;
+  if (loading) return <div className="p-10 text-slate-400 animate-pulse font-light">Loading Tournament Data...</div>;
 
   return (
-    <section className="max-w-6xl mx-auto py-12 px-6 font-sans text-slate-900">
-      <div className="flex justify-between items-start mb-8">
-        <Link href="/list" className="flex items-center gap-2 text-slate-400 hover:text-slate-900 transition-all font-bold group">
-          <ArrowLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
-          대회 목록
-        </Link>
-        {!eventInfo.end && (
-          <button onClick={() => setIsModalOpen(true)} className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-black flex items-center gap-2 hover:bg-blue-600 transition-all shadow-xl shadow-slate-200">
-            <Plus size={20} /> 참가 신청
+    <div className="max-w-6xl mx-auto px-4 md:px-0 pb-20 pt-6">
+      {/* --- 상단 헤더 & 필터: 모바일에서 세로 배치 --- */}
+      <div className="flex flex-col md:flex-row md:justify-between md:items-end gap-6 mb-8 md:mb-10">
+        <div>
+          <h2 className="text-2xl md:text-4xl font-bold tracking-tight mb-2 text-slate-900">In-Jeong 볼링장 점수판</h2>
+          <p className="text-slate-400 font-medium text-sm md:text-base">
+            {selectedEvent?.event_date}
+          </p>
+        </div>
+
+        <div className="relative">
+          <button 
+            onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+            className="w-full md:w-auto flex justify-between items-center gap-3 px-5 py-3 bg-white border border-gray-100 rounded-2xl shadow-sm font-medium text-sm"
+          >
+            <div className="flex items-center gap-2">
+              <Calendar size={16} className="text-slate-400" />
+              {selectedEvent?.title || '대회 선택'}
+            </div>
+            <ChevronDown size={16} className={`transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
           </button>
-        )}
-      </div>
 
-      <div className="bg-white p-10 rounded-[40px] shadow-sm border border-slate-100 mb-8">
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center gap-3">
-              <span className={`text-[10px] font-black px-4 py-1.5 rounded-full tracking-widest ${eventInfo.end ? 'bg-slate-100 text-slate-500' : 'bg-emerald-50 text-emerald-600'}`}>
-                {eventInfo.end ? '모집 마감' : '모집 중'}
-              </span>
-              <p className="text-slate-500 text-sm font-bold flex items-center gap-1.5"><Calendar size={16} className="text-blue-500" />{formatEventDate(eventInfo.event_date)}</p>
-            </div>
-            <h1 className="text-5xl font-black text-slate-900 tracking-tighter italic leading-none uppercase">{eventInfo.title}</h1>
-          </div>
-          <div className="flex gap-4">
-            <div className="bg-slate-50 px-8 py-5 rounded-[24px] border border-slate-100 text-right min-w-[140px]">
-              <p className="text-slate-400 text-[10px] font-black mb-1">총 신청</p>
-              <p className="text-3xl font-black text-slate-900">{entries.length}명</p>
-            </div>
-            <div className="bg-blue-600 px-8 py-5 rounded-[24px] text-right min-w-[160px] shadow-lg shadow-blue-100 text-white">
-              <p className="text-blue-200 text-[10px] font-black mb-1">신청 완료</p>
-              <div className="flex items-baseline justify-end gap-1">
-                <span className="text-3xl font-black">{confirmedCount}</span>
-                <span className="text-blue-200 text-sm font-bold">/ {maxCount}명</span>
-              </div>
-            </div>
-          </div>
-        </div>
-        {maxCount > 0 && (
-          <div className="mt-8 w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-            <div className="bg-blue-500 h-full transition-all duration-1000 ease-out" style={{ width: `${Math.min((confirmedCount / maxCount) * 100, 100)}%` }} />
-          </div>
-        )}
-      </div>
-
-      <div className="bg-white rounded-[32px] shadow-sm border border-slate-100 overflow-hidden">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-slate-50/50 border-b border-slate-100">
-              <th className="p-6 text-[11px] font-black text-slate-400 uppercase tracking-widest w-20">순번</th>
-              <th className="p-6 text-[11px] font-black text-slate-400 uppercase tracking-widest">이름</th>
-              <th className="p-6 text-[11px] font-black text-slate-400 uppercase tracking-widest">참여 구분</th>
-              <th className="p-6 text-[11px] font-black text-slate-400 uppercase tracking-widest">전화번호</th>
-              <th className="p-6 text-[11px] font-black text-slate-400 uppercase tracking-widest text-right">입금 금액</th>
-              <th className="p-6 text-[11px] font-black text-slate-400 uppercase tracking-widest text-right">상태</th>
-            </tr>
-          </thead>
-          <tbody>
-            {entries.length > 0 ? (
-              entries.map((entry, index) => (
-                <tr key={entry.entry_id} className="border-b border-slate-50 last:border-none hover:bg-slate-50/30 transition-colors">
-                  <td className="p-6"><span className="text-slate-300 font-black italic">{index + 1}</span></td>
-                  <td className="p-6">
-                    <div className="flex items-center gap-2">
-                      <p className="text-lg font-black text-slate-800 tracking-tight">{entry.user?.name || '정보 없음'}</p>
-                      {/* ✅ PRO 태그 렌더링 부분 */}
-                      {entry.user?.type_pro === 1 && (
-                        <span className="flex items-center gap-0.5 bg-slate-900 text-white text-[9px] px-1.5 py-0.5 rounded font-black italic tracking-tighter">
-                          <ShieldCheck size={10} className="text-blue-400" /> PRO
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="p-6">
-                    <div className="flex gap-2">
-                        {entry.pay_team && <div className="flex items-center gap-1.5 bg-purple-50 text-purple-600 px-3 py-1.5 rounded-xl border border-purple-100 text-[10px] font-black uppercase"><Users2 size={12} /> 팀전</div>}
-                        {entry.pay_person && <div className="flex items-center gap-1.5 bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-xl border border-indigo-100 text-[10px] font-black uppercase"><UserCheck size={12} /> 개인전</div>}
-                    </div>
-                  </td>
-                  <td className="p-6">
-                    <p className="text-sm font-bold text-slate-500 tracking-wider">
-                      {entry.user ? maskPhoneNumber(entry.user.phone) : '번호 없음'}
-                    </p>
-                  </td>
-                  <td className="p-6 text-right font-black text-slate-700 italic text-lg">
-                    {entry.payment_amount?.toLocaleString() || 0}원
-                  </td>
-                  <td className="p-6 text-right">
-                    <div className="flex items-center justify-end gap-3">
-                      {entry.result && (
-                        entry.payment_status ? (
-                          <span className="flex items-center gap-1 text-[10px] font-black text-emerald-500 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-100 italic"><Check size={12} /> 입금 완료</span>
-                        ) : (
-                          <span className="flex items-center gap-1 text-[10px] font-black text-orange-500 bg-orange-50 px-3 py-1.5 rounded-lg border border-orange-100 italic"><AlertCircle size={12} /> 미입금</span>
-                        )
-                      )}
-                      <div className="font-black text-sm italic uppercase tracking-tighter">
-                        {entry.result ? <span className="text-indigo-600">신청 확정</span> : <span className="text-slate-300">승인 대기</span>}
-                      </div>
-                    </div>
-                  </td>
-                </tr>
-              ))
-            ) : (
-              <tr><td colSpan="6" className="p-20 text-center text-slate-300 font-bold italic">신청자가 없습니다.</td></tr>
+          <AnimatePresence>
+            {isDropdownOpen && (
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}
+                className="absolute right-0 mt-3 w-full md:w-72 bg-white border border-gray-100 rounded-[24px] shadow-2xl z-50 overflow-hidden p-2"
+              >
+                {events.map((ev) => (
+                  <button key={ev.event_id} onClick={() => { setSelectedEventId(ev.event_id); setIsDropdownOpen(false); }}
+                    className={`w-full text-left px-5 py-3 rounded-xl transition-colors flex flex-col gap-1 ${selectedEventId === ev.event_id ? 'bg-slate-50' : 'hover:bg-slate-50/50'}`}
+                  >
+                    <span className={`text-sm font-bold ${selectedEventId === ev.event_id ? 'text-black' : 'text-slate-600'}`}>{ev.title}</span>
+                    <span className="text-[10px] text-slate-400 tracking-widest">{ev.event_date}</span>
+                  </button>
+                ))}
+              </motion.div>
             )}
-          </tbody>
-        </table>
+          </AnimatePresence>
+        </div>
       </div>
 
-      {isModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsModalOpen(false)} />
-          <div className="relative bg-white w-full max-w-md rounded-[40px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300">
-            <div className="p-8 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
-              <h2 className="text-2xl font-black italic tracking-tighter text-slate-900">참가 신청</h2>
-              <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><X size={24} className="text-slate-400" /></button>
-            </div>
-            <form onSubmit={handleSubmit} className="p-8 space-y-6">
-              <div className="space-y-4">
-                <div>
-                  <label className="text-[10px] font-black text-slate-400 tracking-widest ml-1">이름</label>
-                  <input required type="text" placeholder="이름 입력" value={formData.user_name} onChange={(e) => setFormData({...formData, user_name: e.target.value})} className="w-full px-6 py-4 bg-slate-50 rounded-2xl border-none outline-none font-bold" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-black text-slate-400 tracking-widest ml-1">연락처</label>
-                  <input required type="text" maxLength="13" placeholder="010-0000-0000" value={formData.user_phone} onChange={handlePhoneChange} className="w-full px-6 py-4 bg-slate-50 rounded-2xl border-none outline-none font-bold" />
-                </div>
-              </div>
-              <div className="space-y-3">
-                <label className="text-[10px] font-black text-slate-400 tracking-widest ml-1">참여 항목</label>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="flex items-center justify-center gap-2 py-4 rounded-2xl font-black bg-purple-600 text-white shadow-lg shadow-purple-100"><Users2 size={18} /> 팀전</div>
-                  <button type="button" onClick={() => setFormData({...formData, pay_person: !formData.pay_person})} className={`flex items-center justify-center gap-2 py-4 rounded-2xl font-black transition-all border-2 ${formData.pay_person ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-100' : 'bg-white border-slate-100 text-slate-300'}`}><UserCheck size={18} /> 개인전</button>
-                </div>
-              </div>
-              <div className="bg-slate-900 rounded-3xl p-6 text-white relative">
-                <p className="text-[10px] font-black text-slate-400 mb-1">최종 입금 금액</p>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-4xl font-black italic">{calculateTotal().toLocaleString()}</span>
-                  <span className="text-sm font-bold">원</span>
-                </div>
-              </div>
-              <button disabled={isSubmitting} className="w-full bg-blue-600 text-white py-5 rounded-[24px] font-black italic hover:bg-blue-700 transition-all disabled:opacity-50">
-                {isSubmitting ? '처리 중...' : '참가 신청 완료'}
-              </button>
-            </form>
-          </div>
+      {selectedEvent?.progress === false ? (
+        <div className="bg-white rounded-[32px] md:rounded-[40px] p-12 md:p-20 border border-gray-100 text-center">
+          <h3 className="text-lg md:text-xl font-bold">현재 정산되지 않은 대회입니다.</h3>
+          <p className="text-slate-400 font-light mt-2 text-sm">대회가 종료된 후 기록이 노출됩니다.</p>
         </div>
+      ) : (
+        <>
+          {/* --- Stats 카드 섹션: 모바일 2열 --- */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-10 md:mb-12">
+            <StatCard label="참가 인원" value={`${rankings.length}명`} icon={<Users size={18} className="text-slate-900"/>} />
+            <StatCard label="현재 1위" value={rankings[0]?.user?.name || '-'} icon={<Trophy size={18} className="text-amber-600"/>} />
+            <StatCard label="최고 총점" value={rankings[0]?.total || 0} icon={<Star size={18} className="text-blue-700"/>} />
+            <StatCard label="목표 에버" value="200" icon={<Target size={18} className="text-emerald-700"/>} />
+          </div>
+
+          {/* --- Game Leaders: 가로 스크롤 또는 그리드 조정 --- */}
+          <div className="mb-10 md:mb-12">
+            <div className="flex items-center gap-2 mb-4 md:mb-6 px-2">
+              <h3 className="text-lg md:text-xl font-bold tracking-tight text-slate-800 text-nowrap">Game Leaders</h3>
+              <div className="h-[1px] flex-1 bg-gray-100 ml-4"></div>
+            </div>
+            {/* 모바일에서는 가로 스크롤이 가능하도록 설정 */}
+            <div className="flex md:grid md:grid-cols-5 gap-4 overflow-x-auto pb-4 px-2 snap-x no-scrollbar">
+              {[1, 2, 3, 4, 5].map((num) => {
+                const top3 = [...rankings]
+                  .map(r => ({ name: r.user?.name, score: r.scores?.[num - 1] || 0 }))
+                  .sort((a, b) => b.score - a.score)
+                  .slice(0, 3);
+                return (
+                  <div key={num} className="min-w-[140px] flex-shrink-0 md:min-w-0 bg-white rounded-[24px] p-5 border border-gray-200 shadow-sm snap-start">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Game {num}</p>
+                    <div className="space-y-2">
+                      {top3.map((p, i) => (
+                        <div key={i} className="flex justify-between items-center text-xs md:text-sm">
+                          <span className={i === 0 ? "font-bold text-slate-900" : "text-slate-600 truncate mr-2"}>{p.name || '-'}</span>
+                          <span className={i === 0 ? "font-black text-blue-700" : "text-slate-500 font-medium"}>{p.score}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* --- 전체 리더보드: 모바일 가독성 상향 --- */}
+          <motion.div layout className="bg-white rounded-[32px] md:rounded-[40px] border border-gray-100 shadow-sm overflow-hidden">
+            <div className="px-6 py-6 md:px-10 md:py-8 border-b border-gray-50">
+              <h3 className="text-lg md:text-xl font-bold text-slate-800">Leaderboard</h3>
+            </div>
+            
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse min-w-[600px] md:min-w-[800px]">
+                <thead className="text-[9px] md:text-[10px] uppercase tracking-[0.15em] text-slate-500 bg-slate-50/80">
+                  <tr>
+                    <th className="px-4 md:px-8 py-4 font-bold">Rank</th>
+                    <th className="px-4 md:px-8 py-4 font-bold">Player</th>
+                    {[1, 2, 3, 4, 5].map(num => (
+                      <th key={num} className="px-2 py-4 font-bold text-center">G{num}</th>
+                    ))}
+                    <th className="px-4 py-4 font-bold text-center">Avg</th>
+                    <th className="px-4 md:px-8 py-4 font-bold text-right">Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {rankings.map((p, i) => (
+                    <tr key={i} className="hover:bg-slate-50/30 transition-colors group">
+                      <td className="px-4 md:px-8 py-4 md:py-6 font-black text-slate-300 group-hover:text-slate-500 text-xs md:text-base">
+                        {String(i + 1).padStart(2, '0')}
+                      </td>
+                      <td className="px-4 md:px-8 py-4 md:py-6">
+                        <span className="font-bold text-slate-800 text-sm md:text-[15px]">{p.user?.name}</span>
+                      </td>
+
+                      {p.scores.map((score, idx) => {
+                        const gameScores = rankings.map(r => r.scores[idx] || 0).sort((a, b) => b - a);
+                        const rankInGame = gameScores.indexOf(score) + 1;
+                        
+                        const renderBadge = () => {
+                          if (score === 0) return null;
+                          const medalStyle = "text-base md:text-xl drop-shadow-[0_2px_2px_rgba(0,0,0,0.1)] transition-transform group-hover:scale-110";
+                          if (rankInGame === 1) return <span className={`${medalStyle}`}>🥇</span>;
+                          if (rankInGame === 2) return <span className={`${medalStyle}`}>🥈</span>;
+                          if (rankInGame === 3) return <span className={`${medalStyle}`}>🥉</span>;
+                          return null;
+                        };
+
+                        return (
+                          <td key={idx} className="px-1 md:px-4 py-4 md:py-6 text-center border-x border-gray-50/50">
+                            <div className="flex flex-col items-center justify-center gap-1 min-h-[40px] md:min-h-[60px]">
+                              <span className={`text-xs md:text-[15px] font-black tracking-tight ${score >= 200 ? 'text-red-500' : 'text-slate-600'}`}>
+                                {score || '-'}
+                              </span>
+                              <div className="h-4 md:h-6 flex items-center justify-center">
+                                {renderBadge()}
+                              </div>
+                            </div>
+                          </td>
+                        );
+                      })}
+                      
+                      <td className="px-2 md:px-8 py-4 md:py-6 text-center font-semibold text-slate-500 text-xs md:text-sm">{p.avg}</td>
+                      <td className="px-4 md:px-8 py-4 md:py-6 text-right">
+                        <span className="text-sm md:text-lg font-black tracking-tight text-slate-800">{p.total}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </motion.div>
+
+          {/* --- 차트 섹션: 모바일 대응 높이 및 마진 --- */}
+          <div className="mt-10 md:mt-12 bg-white rounded-[32px] md:rounded-[40px] border border-gray-100 shadow-sm overflow-hidden">
+            <div className="p-6 md:p-10 pb-4">
+              <h3 className="text-lg md:text-xl font-bold text-slate-800">Performance Trends</h3>
+              <p className="text-xs md:text-sm text-slate-400 mt-1 font-medium">전체 참가자의 게임별 기록 및 평균 추이</p>
+            </div>
+
+            <div className="px-4 md:px-10 pb-10">
+              <div className="overflow-x-auto pb-6 custom-scrollbar">
+                <div style={{ 
+                  width: `${Math.max(800, rankings.length * 100)}px`, 
+                  height: '350px', 
+                  position: 'relative' 
+                }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ComposedChart
+                      data={rankings.map(p => ({
+                        name: p.user?.name,
+                        "1G": p.scores[0] || 0,
+                        "2G": p.scores[1] || 0,
+                        "3G": p.scores[2] || 0,
+                        "4G": p.scores[3] || 0,
+                        "5G": p.scores[4] || 0,
+                        avg: Number(p.avg),
+                        avgLine: Number(p.avg) + 150
+                      }))}
+                      margin={{ top: 40, right: 20, left: 0, bottom: 20 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                      <XAxis dataKey="name" tick={{ fontSize: 11, fontWeight: 700, fill: '#475569' }} axisLine={false} tickLine={false} interval={0} dy={10} />
+                      <YAxis domain={[0, 400]} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94A3B8' }} />
+                      <Tooltip cursor={{ fill: '#F8FAFC', opacity: 0.4 }} contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }} />
+                      <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ paddingBottom: '20px', fontSize: '11px' }} />
+                      {["1G", "2G", "3G", "4G", "5G"].map((key, i) => (
+                        <Bar key={key} dataKey={key} fill={["#E2E8F0", "#CBD5E1", "#94A3B8", "#475569", "#1E293B"][i]} radius={[2, 2, 0, 0]} barSize={15}>
+                          <LabelList dataKey={key} position="top" style={{ fontSize: '8px', fill: '#94A3B8' }} offset={4} />
+                        </Bar>
+                      ))}
+                      <Line type="monotone" dataKey="avgLine" name="평균" stroke="#3B82F6" strokeWidth={2} dot={{ r: 3, fill: '#3B82F6' }}>
+                        <LabelList dataKey="avg" position="top" style={{ fontSize: '10px', fontWeight: '900', fill: '#2563EB' }} offset={8} />
+                      </Line>
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
       )}
-    </section>
+    </div>
+  );
+}
+
+function StatCard({ label, value, icon }) {
+  return (
+    <div className="p-4 md:p-6 rounded-[24px] md:rounded-3xl border border-gray-100 bg-white shadow-sm transition-all">
+      <div className="flex justify-between items-start mb-2 md:mb-4">
+        <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">
+          {label}
+        </span>
+        <div className="opacity-80 scale-75 md:scale-100">
+          {icon}
+        </div>
+      </div>
+      <div className="text-lg md:text-2xl font-bold tracking-tight text-slate-800 truncate">
+        {value}
+      </div>
+    </div>
   );
 }
