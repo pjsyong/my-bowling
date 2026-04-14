@@ -65,28 +65,35 @@ export default function IntegratedRecordPage() {
 
   const calculateWinners = () => {
     const winnerMap = {}; // { '이름': 총상금 }
+
+    // 1. UI에 표시된 확정 인원수 계산 (이미지 하단 '확정 27명 기준'과 동일)
+    const confirmedCount = rankings.filter(r => r.result === true && r.pay_person === true).length;
+
+    // 2. UI 상단 카드에 표시된 1/2/3등 상금 가져오기
     const { prizes } = getPrizeData(
       selectedEvent?.event_pay_person,
-      rankings.length,
+      confirmedCount,
       { r1: selectedEvent?.ratio_1, r2: selectedEvent?.ratio_2, r3: selectedEvent?.ratio_3 },
       selectedEvent?.frame
     );
 
-    // 각 게임별(1G~5G)로 상위 3명을 찾아 상금 배분
-    for (let gameIdx = 0; gameIdx < (selectedEvent?.frame || 5); gameIdx++) {
-      const gameRankings = [...rankings]
-        .map(r => ({ name: r.user?.name, score: r.scores[gameIdx] || 0 }))
+    // 3. 게임별 1/2/3등에게 해당 상금을 이름표 붙여서 더해주기
+    // selectedEvent?.frame이 4라면, 0, 1, 2, 3 인덱스(G1~G4)만 돕니다.
+    for (let i = 0; i < (selectedEvent?.frame || 0); i++) {
+      const gameRanking = [...rankings]
+        .map(r => ({ name: r.user?.name, score: r.scores[i] || 0 }))
         .sort((a, b) => b.score - a.score);
 
-      gameRankings.forEach((player, rank) => {
-        if (rank < 3 && player.score > 0) { // 1, 2, 3등만
-          const prizeMoney = prizes[rank];
-          winnerMap[player.name] = (winnerMap[player.name] || 0) + prizeMoney;
+      // 각 게임의 1, 2, 3등에게 위에서 정의한 prizes 값을 그대로 누적
+      [0, 1, 2].forEach(rank => {
+        const winner = gameRanking[rank];
+        if (winner && winner.score > 0) {
+          winnerMap[winner.name] = (winnerMap[winner.name] || 0) + prizes[rank];
         }
       });
     }
 
-    // 객체를 배열로 변환 후 상금 높은 순으로 정렬
+    // 4. 합산된 결과를 상금 높은 순으로 정렬해서 반환
     return Object.entries(winnerMap)
       .map(([name, totalPrize]) => ({ name, totalPrize }))
       .sort((a, b) => b.totalPrize - a.totalPrize);
@@ -207,14 +214,14 @@ export default function IntegratedRecordPage() {
 
           return (
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <PrizeBox label="1st Prize" amount={prizes[0]} color="bg-indigo-50 text-indigo-700 border-indigo-100" rank="🥇" />
-              <PrizeBox label="2nd Prize" amount={prizes[1]} color="bg-purple-50 text-purple-700 border-purple-100" rank="🥈" />
-              <PrizeBox label="3rd Prize" amount={prizes[2]} color="bg-emerald-50 text-emerald-700 border-emerald-100" rank="🥉" />
+              <PrizeBox label="1등 금액" amount={prizes[0]} color="bg-indigo-50 text-indigo-700 border-indigo-100" rank="🥇" />
+              <PrizeBox label="2등 금액" amount={prizes[1]} color="bg-purple-50 text-purple-700 border-purple-100" rank="🥈" />
+              <PrizeBox label="3등 금액" amount={prizes[2]} color="bg-emerald-50 text-emerald-700 border-emerald-100" rank="🥉" />
               <div className="flex flex-col justify-center p-5 md:p-6 bg-slate-50 rounded-[24px] border border-slate-100 shadow-sm">
                 <div className="flex justify-between items-start mb-1">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Remainder</span>
+                  <span className="text-[12px] font-black text-slate-400 uppercase tracking-widest">남는 금액</span>
                   {/* 시각적으로 확정 인원수를 작게 표시해주면 더 친절합니다 */}
-                  <span className="text-[9px] font-bold text-indigo-400">확정 {confirmedCount}명 기준</span>
+                  <span className="text-[12px] font-bold text-indigo-400">개인 사이드 : 총 {confirmedCount}명</span>
                 </div>
                 <span className="text-lg font-bold text-slate-600">{totalRemainder.toLocaleString()}원</span>
               </div>
@@ -224,10 +231,10 @@ export default function IntegratedRecordPage() {
       </div>
 
       {/* --- Prize Winners List --- */}
-      <div className="mt-6 md:mt-8">
+      <div className="mt-6 md:mt-8 mb-6 md:mb-10">
         <div className="bg-white rounded-[32px] border border-slate-100 p-6 md:p-8 shadow-sm">
           <div className="flex items-center justify-between mb-6">
-            <h3 className="text-sm md:text-base font-bold text-slate-800 italic uppercase tracking-wider">Prize Winners</h3>
+            <h3 className="text-sm md:text-base font-bold text-slate-800 uppercase tracking-wider">우승 상금</h3>
             <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Sorted by Amount</span>
           </div>
           
@@ -303,7 +310,7 @@ export default function IntegratedRecordPage() {
           {/* --- 리더보드 테이블 --- */}
           <motion.div layout className="bg-white rounded-[40px] border border-gray-100 shadow-sm overflow-hidden mb-12">
             <div className="px-10 py-8 border-b border-gray-50">
-              <h3 className="text-xl font-bold text-slate-800">Leaderboard</h3>
+              <h3 className="text-xl font-bold text-slate-800">전체 점수 현황</h3>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
@@ -421,7 +428,7 @@ function PrizeBox({ label, amount, color, rank }) {
   return (
     <div className={`flex items-center justify-between p-5 md:p-6 rounded-[24px] border ${color} shadow-sm`}>
       <div>
-        <p className="text-[10px] font-black uppercase tracking-widest opacity-70 mb-1">{label}</p>
+        <p className="text-[12px] font-black uppercase tracking-widest opacity-70 mb-1">{label}</p>
         <p className="text-xl md:text-2xl font-black">{amount.toLocaleString()}<span className="text-sm font-bold ml-1">원</span></p>
       </div>
       <span className="text-3xl opacity-80">{rank}</span>
