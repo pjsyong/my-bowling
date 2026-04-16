@@ -1,54 +1,59 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { UserPlus, Pencil, Trash2, ArrowLeft, User, ShieldCheck, UserCheck } from 'lucide-react';
 import Link from 'next/link';
 
 export default function UserManagementPage() {
-  const [users, setUsers] = useState([]);
-  const [filterStatus, setFilterStatus] = useState('전체'); // 필터 상태 추가
+  const router = useRouter();
+  const queryClient = useQueryClient(); // 3. 캐시 갱신용
+
+  const [filterStatus, setFilterStatus] = useState('전체');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [formData, setFormData] = useState({ name: '', current_id: '', type_pro: 0, official: false });
-  const [loading, setLoading] = useState(true);
-  const router = useRouter();
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
 
-  const fetchUsers = useCallback(async () => {
-    setLoading(true);
-    try {
+  // 4. React Query로 유저 목록 호출
+  const { data: users = [], isLoading: loading } = useQuery({
+    queryKey: ['admin-users'],
+    queryFn: async () => {
       const { data, error } = await supabase
         .from('user')
         .select('*')
         .order('user_id', { ascending: true });
       
       if (error) throw error;
-      setUsers(data || []);
-    } catch (error) {
-      console.error('불러오기 실패:', error.message);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      return data || [];
+    },
+    staleTime: 0, // 유저 정보 변경은 즉각 반영되어야 하므로 0초!
+  });
 
+  // 5. 데이터 갱신 함수
+  const refreshUsers = () => {
+    queryClient.invalidateQueries({ queryKey: ['admin-users'] });
+  };
+
+  // 6. 권한 체크 (useEffect 최소화)
   useEffect(() => {
     const checkAuth = async () => {
-      const { data: { user }, error } = await supabase.auth.getUser();
-      if (error || !user || user.email !== 'injeong@gmail.com') {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user || user.email !== 'injeong@gmail.com') {
         alert('관리자 인증이 필요합니다.');
         router.push('/admin');
-        return;
       }
-      fetchUsers();
     };
     checkAuth();
-  }, [router, fetchUsers]);
+  }, [router]);
 
-  // 필터링 로직
+  
+
+  // 필터링 로직 (기존 유지)
   const filteredUsers = users.filter(user => {
     if (filterStatus === '전체') return true;
     if (filterStatus === '일반') return user.official === true;
@@ -60,88 +65,50 @@ export default function UserManagementPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     const today = new Date().toISOString().split('T')[0];
-    
     const trimmedId = formData.current_id.trim();
     const trimmedName = formData.name.trim();
 
     try {
-      // 1. .maybeSingle() 대신 .limit(1)을 사용하여 여러 개가 있어도 에러 없이 첫 번째 것만 가져옵니다.
-      const { data: existingUsers, error: checkError } = await supabase
-        .from('user')
-        .select('user_id, name')
-        .eq('current_id', trimmedId)
-        .limit(1); // 무조건 배열 형태로 가져오되 최대 1개만
+      // 중복 체크 로직 (기존 유지)
+      const { data: existingUsers } = await supabase.from('user').select('user_id, name').eq('current_id', trimmedId).limit(1);
+      const existingUser = existingUsers?.[0];
 
-      if (checkError) throw checkError;
-
-      // 데이터가 존재한다면 첫 번째 요소를 선택
-      const existingUser = existingUsers && existingUsers.length > 0 ? existingUsers[0] : null;
-
-      // 2. 중복 판별
-      if (existingUser) {
-        if (!editingUser || existingUser.user_id !== editingUser.user_id) {
-          alert(`이미 사용 중인 ID입니다.\n(등록된 사용자: ${existingUser.name})`);
-          return;
-        }
+      if (existingUser && (!editingUser || existingUser.user_id !== editingUser.user_id)) {
+        alert(`이미 사용 중인 ID입니다.\n(등록된 사용자: ${existingUser.name})`);
+        return;
       }
 
-      // 3. DB 작업 진행
       if (editingUser) {
-        const { error: updateError } = await supabase.from('user').update({
-          name: trimmedName,
-          current_id: trimmedId,
-          type_pro: parseInt(formData.type_pro),
-          official: formData.official 
+        await supabase.from('user').update({
+          name: trimmedName, current_id: trimmedId,
+          type_pro: parseInt(formData.type_pro), official: formData.official 
         }).eq('user_id', editingUser.user_id);
-        
-        if (updateError) throw updateError;
       } else {
-        const { error: insertError } = await supabase.from('user').insert([{
-          name: trimmedName,
-          current_id: trimmedId,
-          type_pro: parseInt(formData.type_pro),
-          official: formData.official,
-          created_at: today
+        await supabase.from('user').insert([{
+          name: trimmedName, current_id: trimmedId,
+          type_pro: parseInt(formData.type_pro), official: formData.official, created_at: today
         }]);
-        
-        if (insertError) throw insertError;
       }
 
       setIsModalOpen(false);
       setEditingUser(null);
-      fetchUsers();
+      refreshUsers(); // 7. 등록/수정 후 즉시 캐시 갱신
     } catch (error) {
-      // 에러 메시지가 JSON 관련 내용이면 무시하거나 더 친절하게 출력
-      console.error(error);
       alert('동작 실패: ' + error.message);
     }
   };
 
-  const handleDeleteClick = (user) => {
-    setDeleteTarget(user); // 유저 객체 전체 저장 (name, current_id 포함)
-    setDeleteConfirmText('');
-    setIsDeleteModalOpen(true);
-  };
-
-  // "전체 삭제" 입력 후 최종 확인 시 실행
   const confirmDelete = async () => {
-    // 입력값이 삭제 대상의 이름과 일치하는지 확인
     if (deleteConfirmText !== deleteTarget.name) {
       alert('이름을 정확히 입력해주세요.');
       return;
     }
 
     try {
-      const { error } = await supabase
-        .from('user')
-        .delete()
-        .eq('user_id', deleteTarget.user_id);
-
-      if (error) throw error;
-      
+      await supabase.from('user').delete().eq('user_id', deleteTarget.user_id);
       setIsDeleteModalOpen(false);
       setDeleteTarget(null);
-      fetchUsers();
+      refreshUsers(); // 8. 삭제 후 즉시 캐시 갱신
     } catch (error) {
       alert('삭제 실패: ' + error.message);
     }

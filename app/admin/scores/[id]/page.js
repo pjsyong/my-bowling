@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, use } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { ArrowLeft, CheckCircle2, User, ChevronDown, ChevronUp, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
@@ -10,50 +11,31 @@ export default function ScoreEntryPage({ params }) {
   const resolvedParams = use(params);
   const eventId = resolvedParams.id;
   const router = useRouter();
+  const queryClient = useQueryClient(); // 2. 캐시 갱신용
 
-  const [eventInfo, setEventInfo] = useState(null);
-  const [entries, setEntries] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [expandedId, setExpandedId] = useState(null); // 펼쳐진 유저 ID 관리
+  const [expandedId, setExpandedId] = useState(null);
   const [toast, setToast] = useState({ show: false, message: '' });
 
-  const showToast = (message) => {
-    setToast({ show: true, message });
-    setTimeout(() => setToast({ show: false, message: '' }), 2000);
-  };
-
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
+  // 3. React Query로 데이터 호출 (이벤트 정보 + 참가자 + 점수 통합)
+  const { data: { eventInfo, entries } = { eventInfo: null, entries: [] }, isLoading: loading } = useQuery({
+    queryKey: ['admin-scores', eventId],
+    queryFn: async () => {
+      // (1) 대회 정보
       const { data: eventData } = await supabase.from('event').select('*').eq('event_id', eventId).single();
-      setEventInfo(eventData);
-
-      const { data: entryData, error: entryError } = await supabase
-        .from('entry')
-        .select(`user_id`)
-        .eq('event_id', eventId)
-        .eq('result', true);
-
-      if (entryError) throw entryError;
-
-      const userIds = entryData.map(e => e.user_id);
-      const { data: userData, error: userError } = await supabase
-        .from('user_public')
-        .select('user_id, name')
-        .in('user_id', userIds);
       
-      if (userError) throw userError;
+      // (2) 확정된 참가자 목록
+      const { data: entryData } = await supabase.from('entry').select(`user_id`).eq('event_id', eventId).eq('result', true);
+      const userIds = entryData?.map(e => e.user_id) || [];
 
-      const { data: scoreData, error: scoreError } = await supabase
-        .from('score')
-        .select('*')
-        .eq('event_id', eventId);
+      // (3) 유저 이름 & 기존 점수 데이터
+      const [userRes, scoreRes] = await Promise.all([
+        supabase.from('user_public').select('user_id, name').in('user_id', userIds),
+        supabase.from('score').select('*').eq('event_id', eventId)
+      ]);
 
-      if (scoreError) throw scoreError;
-
-      const formattedEntries = entryData.map(entry => {
-        const user = userData?.find(u => u.user_id === entry.user_id);
-        const score = scoreData?.find(s => s.user_id === entry.user_id) || {};
+      const formattedEntries = (entryData || []).map(entry => {
+        const user = userRes.data?.find(u => u.user_id === entry.user_id);
+        const score = scoreRes.data?.find(s => s.user_id === entry.user_id) || {};
         
         return {
           user_id: entry.user_id,
@@ -67,57 +49,57 @@ export default function ScoreEntryPage({ params }) {
         };
       });
 
-      setEntries(formattedEntries);
-    } catch (error) {
-      console.error('Data Fetch Error:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [eventId]);
+      return { eventInfo: eventData, entries: formattedEntries };
+    },
+    staleTime: 0, // 점수 입력은 실시간성이 중요하므로 0초!
+  });
 
-  useEffect(() => {
-    const checkAuth = async () => {
-      const { data: { user }, error } = await supabase.auth.getUser();
-      if (error || !user || user.email !== 'injeong@gmail.com') {
-        alert('관리자 인증이 필요합니다.');
-        router.push('/admin');
-        return;
-      }
-      fetchData();
-    };
-    checkAuth();
-  }, [router, fetchData]);
+  const showToast = (message) => {
+    setToast({ show: true, message });
+    setTimeout(() => setToast({ show: false, message: '' }), 2000);
+  };
 
+  // 4. 점수 업데이트 로직
   const handleScoreUpdate = async (user_id, field, value) => {
     const numValue = parseInt(value) || 0;
     const targetEntry = entries.find(e => e.user_id === user_id);
 
-    setEntries(prev => prev.map(e => 
-      e.user_id === user_id ? { ...e, [field]: numValue } : e
-    ));
-
+    // 낙관적 업데이트 대신, 안정성을 위해 처리 후 invalidateQueries 사용
     try {
       if (targetEntry.score_id) {
         await supabase.from('score').update({ [field]: numValue }).eq('score_id', targetEntry.score_id);
       } else {
-        const { data } = await supabase.from('score').insert([{
+        await supabase.from('score').insert([{
           user_id, event_id: Number(eventId), [field]: numValue
-        }]).select();
-        if (data) {
-          setEntries(prev => prev.map(e => e.user_id === user_id ? { ...e, score_id: data[0].score_id } : e));
-        }
+        }]);
       }
       showToast(`${field.split('_')[1]}게임 저장 완료`);
+      
+      // 5. 캐시 무효화를 통해 상단 Total 점수와 배지 상태를 즉시 갱신
+      queryClient.invalidateQueries({ queryKey: ['admin-scores', eventId] });
     } catch (error) {
       console.error('Score Update Error:', error);
     }
   };
 
+  // --- 이 함수를 추가하세요! ---
   const toggleExpand = (id) => {
     setExpandedId(expandedId === id ? null : id);
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center font-black text-slate-300">LOADING...</div>;
+  // 6. 권한 체크
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user || user.email !== 'injeong@gmail.com') {
+        alert('관리자 인증이 필요합니다.');
+        router.push('/admin');
+      }
+    };
+    checkAuth();
+  }, [router]);
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center font-black text-slate-300 animate-pulse">LOADING...</div>;
 
   return (
     <div className="min-h-screen bg-slate-50 pb-20">

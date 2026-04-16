@@ -24,7 +24,10 @@ export default function EventDetailPage({ params }) {
       let combinedEntries = [];
       if (entryData && entryData.length > 0) {
         const userIds = entryData.map(e => e.user_id);
-        const { data: userData } = await supabase.from('user').select('user_id, name, type_pro').in('user_id', userIds);
+        const { data: userData } = await supabase
+          .from('user') // 혹은 설정에 따라 'user_public'
+          .select('user_id, name, type_pro, official') // official 추가
+          .in('user_id', userIds);
 
         combinedEntries = entryData.map(entry => {
           const userInfo = userData?.find(u => u.user_id === entry.user_id);
@@ -32,6 +35,7 @@ export default function EventDetailPage({ params }) {
             ...entry,
             user: userInfo,
             userName: userInfo ? userInfo.name : '이름 없음',
+            isGuest: userInfo?.official === false // 게스트 여부 플래그 추가
           };
         }).sort((a, b) => a.entry_id - b.entry_id);
       }
@@ -64,7 +68,14 @@ export default function EventDetailPage({ params }) {
   };
 
   const { prizes, totalRemainder } = calculatePrizes();
-  const confirmedCount = entries.filter(entry => entry.result).length;
+  
+  const confirmedEntries = entries.filter(entry => entry.result);
+  const confirmedCount = confirmedEntries.length;
+
+  // 인원 구분 계산
+  const guestCount = confirmedEntries.filter(entry => entry.isGuest).length;
+  const memberCount = confirmedCount - guestCount;
+
 
   if (loading) return <div className="p-20 text-center font-black text-slate-300 animate-pulse italic text-sm tracking-widest">LOADING...</div>;
   if (!eventInfo) return <div className="p-20 text-center text-slate-400">정보를 불러올 수 없습니다.</div>;
@@ -100,9 +111,16 @@ export default function EventDetailPage({ params }) {
             <Users2 size={14}/>
             <span className="text-[10px] font-black uppercase tracking-wider">Confirmed</span>
           </div>
-          <div className="flex items-baseline gap-1">
-            <span className="text-2xl font-black text-slate-900">{confirmedCount}</span>
-            <span className="text-[11px] font-bold text-slate-400 italic">/ {eventInfo.max_people}</span>
+          <div className="flex flex-col">
+            <div className="flex items-baseline gap-1">
+              <span className="text-2xl font-black text-slate-900">{confirmedCount}</span>
+              <span className="text-[11px] font-bold text-slate-400 italic">/ {eventInfo.max_people}</span>
+            </div>
+            {/* 세부 인원 표시 */}
+            <div className="flex gap-2 mt-1 text-[10px] font-bold">
+              <span className="text-indigo-600">MEM {memberCount}</span>
+              <span className="text-emerald-600">GST {guestCount}</span>
+            </div>
           </div>
         </div>
         <div className="bg-slate-50 border border-slate-100 p-5 rounded-[24px]">
@@ -151,8 +169,8 @@ export default function EventDetailPage({ params }) {
             <span className="text-[10px] font-black uppercase tracking-widest">Entry Fee</span>
           </div>
           <div className="space-y-1">
-            <p className="flex justify-between text-[11px] font-bold text-indigo-900"><span>Solo</span> <span>{eventInfo.event_pay_person?.toLocaleString()}</span></p>
-            <p className="flex justify-between text-[11px] font-bold text-indigo-900"><span>Team</span> <span>{eventInfo.event_pay_team?.toLocaleString()}</span></p>
+            <p className="flex justify-between text-[11px] font-bold text-indigo-900"><span>개인 비용</span> <span>{eventInfo.event_pay_person?.toLocaleString()}￦</span></p>
+            <p className="flex justify-between text-[11px] font-bold text-indigo-900"><span>팀전 비용</span> <span>{eventInfo.event_pay_team?.toLocaleString()}￦</span></p>
           </div>
         </div>
       </div>
@@ -171,16 +189,27 @@ export default function EventDetailPage({ params }) {
 
         <div className="space-y-3">
           {entries.map((entry, index) => {
-            // result가 false이면 신청 대기 상태
             const isWaiting = !entry.result;
+            const isGuest = entry.isGuest; // 위 단계에서 추가한 플래그
+            const isPro = entry.user?.type_pro === 1;
+
+            // 배경 및 테두리 스타일 결정 로직
+            let cardStyle = "bg-white border-slate-100 shadow-sm"; // 기본(일반인)
+            
+            if (isWaiting) {
+              cardStyle = "bg-slate-50/40 border-dashed border-slate-200 opacity-75";
+            } else if (isGuest) {
+              // 게스트 우선 적용
+              cardStyle = "bg-emerald-50/50 border-emerald-100 shadow-sm";
+            } else if (isPro) {
+              // 프로 적용
+              cardStyle = "bg-blue-50/50 border-blue-100 shadow-sm";
+            }
 
             return (
               <div 
                 key={entry.entry_id} 
-                className={`flex items-center justify-between p-4 rounded-[24px] border transition-all
-                  ${isWaiting 
-                    ? 'bg-slate-50/40 border-dashed border-slate-200 opacity-75' 
-                    : 'bg-white border-slate-100 shadow-sm'}`}
+                className={`flex items-center justify-between p-4 rounded-[24px] border transition-all ${cardStyle}`}
               >
                 <div className="flex items-center gap-4">
                   <span className={`text-[10px] font-black italic ${isWaiting ? 'text-slate-300' : 'text-indigo-600'}`}>
@@ -193,9 +222,16 @@ export default function EventDetailPage({ params }) {
                         {entry.userName || 'Unknown'}
                       </p>
                       
-                      {entry.user?.type_pro === 1 && (
+                      {/* 배지 표시 로직 */}
+                      {isPro && !isGuest && (
                         <span className="flex items-center gap-0.5 bg-slate-900 text-white text-[7px] px-1.5 py-0.5 rounded font-black italic">
-                           <ShieldCheck size={8} className="text-blue-400" /> PRO
+                          <ShieldCheck size={8} className="text-blue-400" /> PRO
+                        </span>
+                      )}
+
+                      {isGuest && (
+                        <span className="flex items-center gap-0.5 bg-emerald-600 text-white text-[7px] px-1.5 py-0.5 rounded font-black italic">
+                          GUEST
                         </span>
                       )}
 
@@ -217,7 +253,7 @@ export default function EventDetailPage({ params }) {
                   <p className={`text-[13px] font-black italic tracking-tighter mb-1 ${isWaiting ? 'text-slate-400' : 'text-slate-900'}`}>
                     {entry.payment_amount?.toLocaleString()}원
                   </p>
-                  <div className={`text-[9px] font-black px-2 py-0.5 rounded-full inline-block ${entry.payment_status ? 'bg-emerald-50 text-emerald-500' : 'bg-orange-50 text-orange-500'}`}>
+                  <div className={`text-[9px] font-black px-2 py-0.5 rounded-full inline-block ${entry.payment_status ? 'bg-emerald-100/50 text-emerald-600' : 'bg-orange-50 text-orange-500'}`}>
                     {entry.payment_status ? 'PAID' : 'UNPAID'}
                   </div>
                 </div>
