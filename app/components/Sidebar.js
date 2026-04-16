@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trophy, List, User, Menu, X, UserPlus, Lock } from 'lucide-react';
+import { Trophy, List, User, Menu, X, UserPlus } from 'lucide-react';
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -17,62 +17,57 @@ export default function Sidebar() {
     { name: '회원 등록', icon: <UserPlus size={20} />, path: '/register' },
   ];
 
-  const toggleSidebar = () => setIsOpen(!isOpen);
-
   return (
     <>
-      {/* 모바일 상단 플로팅 햄버거 버튼 */}
+      {/* 상단 플로팅 햄버거 버튼 */}
       <button 
-        onClick={toggleSidebar}
-        className="fixed top-5 left-5 z-[110] p-3 bg-white rounded-2xl shadow-lg border border-gray-100 text-slate-800"
+        onClick={() => setIsOpen(true)}
+        className="fixed top-5 left-5 z-[90] bg-white/80 backdrop-blur-md border border-gray-100 p-3 rounded-2xl shadow-lg text-slate-900"
       >
-        {isOpen ? <X size={24} /> : <Menu size={24} />}
+        <Menu size={20} />
       </button>
 
       <AnimatePresence>
         {isOpen && (
           <>
-            {/* 뒷배경 흐리게 (Overlay) */}
+            {/* 배경 흐림 처리 (오버레이) */}
             <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={toggleSidebar}
-              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[120]"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setIsOpen(false)}
+              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100]"
             />
-
-            {/* 사이드바 본체 */}
+            {/* 사이드바 본체 (상단 레이어로 노출) */}
             <motion.aside 
-              initial={{ x: '-100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '-100%' }}
+              initial={{ x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed top-0 left-0 h-full w-[280px] bg-white z-[130] shadow-2xl p-6 flex flex-col"
+              className="fixed h-screen top-0 left-0 w-72 bg-white z-[110] p-6 flex flex-col shadow-2xl"
             >
-              <div className="mt-16 mb-10 px-2">
-                <h1 className="text-2xl font-black italic tracking-tighter text-slate-900">
-                  IN-JEONG <span className="text-blue-600">.</span>
-                </h1>
+              <div className="flex justify-between items-center mb-12">
+                <h1 className="text-xl font-black italic tracking-tighter">IN-JEONG</h1>
+                <button onClick={() => setIsOpen(false)} className="p-2 bg-slate-50 rounded-full">
+                  <X size={20} />
+                </button>
               </div>
 
               <nav className="flex-1 space-y-2">
-                {menuItems.map((item) => (
-                  <Link key={item.path} href={item.path} onClick={() => setIsOpen(false)}>
-                    <div className={`flex items-center gap-4 px-5 py-4 rounded-2xl transition-all ${
-                      pathname === item.path ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'
-                    }`}>
-                      {item.icon}
-                      <span className="font-bold">{item.name}</span>
-                    </div>
-                  </Link>
-                ))}
+                {menuItems.map((item) => {
+                  const isActive = pathname === item.path;
+                  return (
+                    <Link key={item.path} href={item.path} onClick={() => setIsOpen(false)}>
+                      <div className={`flex items-center gap-4 px-5 py-4 rounded-2xl transition-all ${isActive ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100' : 'text-slate-500 hover:bg-slate-50'}`}>
+                        {item.icon}
+                        <span className="font-bold text-base">{item.name}</span>
+                      </div>
+                    </Link>
+                  );
+                })}
               </nav>
 
-              <div className="pt-6 border-t border-gray-100">
+              <div className="pt-4 border-t border-gray-100">
                 <Link href="/admin" onClick={() => setIsOpen(false)}>
                   <div className="flex items-center gap-4 px-5 py-4 text-slate-400">
-                    <Lock size={20} />
-                    <span className="font-medium">관리자 설정</span>
+                    <span className="text-xl">🔒</span>
+                    <span className="font-bold">Admin Setting</span>
                   </div>
                 </Link>
               </div>
