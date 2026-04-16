@@ -120,6 +120,45 @@ export default function IntegratedRecordPage() {
         </div>
       </div>
 
+      {/* 🚀 추가된 부분: Game Leaders 가로 스크롤 UI */}
+      <div className="mb-6 px-1">
+        <div className="flex items-center justify-between mb-3 px-1">
+          <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Game Leaders</h3>
+          <span className="text-[10px] text-slate-300 font-bold">Swipe left ➔</span>
+        </div>
+        
+        <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar snap-x">
+          {[1, 2, 3, 4, 5].map((num) => {
+            // 각 게임별 상위 3명 추출 로직 (기존 로직 활용)
+            const top3 = [...rankings]
+              .map(r => ({ name: r.user?.name, score: r.scores?.[num - 1] || 0 }))
+              .sort((a, b) => b.score - a.score)
+              .slice(0, 3);
+
+            return (
+              <div key={num} className="min-w-[130px] bg-white border border-slate-100 rounded-[24px] p-4 shadow-sm snap-start">
+                <p className="text-[10px] font-black text-indigo-500 mb-3">GAME {num}</p>
+                <div className="space-y-2">
+                  {top3.map((p, i) => (
+                    <div key={i} className="flex justify-between items-center">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px]">{i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉'}</span>
+                        <span className={`text-xs font-bold ${i === 0 ? 'text-slate-900' : 'text-slate-500'}`}>
+                          {p.name || '-'}
+                        </span>
+                      </div>
+                      <span className={`text-xs font-black ${i === 0 ? 'text-indigo-600' : 'text-slate-400'}`}>
+                        {p.score}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {/* 3. 모바일 탭 메뉴 */}
       <div className="flex bg-slate-100 p-1.5 rounded-2xl mb-6">
         <button 
@@ -193,9 +232,19 @@ export default function IntegratedRecordPage() {
                         <span className="text-sm font-black">{prizes[2].toLocaleString()}</span>
                       </div>
                     </div>
-                    <div className="bg-white/10 rounded-2xl py-3 px-4 flex justify-between items-center">
-                      <span className="text-xs font-medium">잔여 상금(개인사이드)</span>
-                      <span className="font-black text-sm">{totalRemainder.toLocaleString()}원</span>
+                    <div className="bg-white/10 rounded-2xl py-4 px-5 space-y-3">
+                      <div className="flex justify-between items-center border-b border-white/10 pb-2">
+                        <span className="text-xs font-medium opacity-80">총 상금</span>
+                        <span className="font-black text-base">
+                          {(selectedEvent?.event_pay_person * confirmedCount).toLocaleString()}원
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center pt-1">
+                        <span className="text-xs font-medium opacity-80">잔여 상금 (개인사이드)</span>
+                        <span className="font-black text-base text-amber-300">
+                          {totalRemainder.toLocaleString()}원
+                        </span>
+                      </div>
                     </div>
                   </div>
 
