@@ -1,96 +1,85 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trophy, List, User, ChevronLeft, ChevronRight, UserPlus } from 'lucide-react';
+import { Trophy, List, User, Menu, X, UserPlus, Lock } from 'lucide-react';
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const [isOpen, setIsOpen] = useState(false); // Collapsed 대신 Open 상태로 관리
-
-  // 사이드바가 열려있을 때 본문 스크롤 방지 (선택 사항)
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
-  }, [isOpen]);
+  const [isOpen, setIsOpen] = useState(false);
 
   const menuItems = [
-    { name: '대회 기록', icon: <Trophy size={18} />, path: '/' },
-    { name: '대회 목록', icon: <List size={18} />, path: '/list' },
-    { name: '개인 기록', icon: <User size={18} />, path: '/profile' },
-    { name: '회원 등록', icon: <UserPlus size={18} />, path: '/register' },
+    { name: '대회 기록', icon: <Trophy size={20} />, path: '/' },
+    { name: '대회 목록', icon: <List size={20} />, path: '/list' },
+    { name: '개인 기록', icon: <User size={20} />, path: '/profile' },
+    { name: '회원 등록', icon: <UserPlus size={20} />, path: '/register' },
   ];
 
-  const renderItem = (item) => {
-    const isActive = pathname === item.path;
-    return (
-      <Link key={item.path} href={item.path} onClick={() => setIsOpen(false)}>
-        <div className={`relative w-full flex items-center gap-4 px-5 py-4 text-sm cursor-pointer group transition-all`}>
-          {isActive && (
-            <motion.div
-              layoutId="sidebar-active"
-              className="absolute inset-y-2 inset-x-2 bg-blue-50 rounded-2xl"
-              transition={{ type: 'spring', stiffness: 350, damping: 30 }}
-            />
-          )}
-          <span className={`relative z-10 transition-colors ${isActive ? 'text-blue-600' : 'text-gray-400'}`}>
-            {item.icon}
-          </span>
-          <span className={`relative z-10 font-bold transition-colors ${isActive ? 'text-blue-600' : 'text-gray-600'}`}>
-            {item.name}
-          </span>
-        </div>
-      </Link>
-    );
-  };
+  const toggleSidebar = () => setIsOpen(!isOpen);
 
   return (
     <>
-      {/* 1. 토글 버튼 (고정 위치) */}
+      {/* 모바일 상단 플로팅 햄버거 버튼 */}
       <button 
-        onClick={() => setIsOpen(!isOpen)}
-        className="fixed top-6 left-4 z-[110] bg-white border border-slate-100 rounded-2xl p-3 shadow-lg text-slate-600"
+        onClick={toggleSidebar}
+        className="fixed top-5 left-5 z-[110] p-3 bg-white rounded-2xl shadow-lg border border-gray-100 text-slate-800"
       >
-        {isOpen ? <ChevronLeft size={20} /> : <List size={20} />}
+        {isOpen ? <X size={24} /> : <Menu size={24} />}
       </button>
 
-      {/* 2. 배경 어둡게 처리 (Overlay Backdrop) */}
       <AnimatePresence>
         {isOpen && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setIsOpen(false)}
-            className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[90]"
-          />
+          <>
+            {/* 뒷배경 흐리게 (Overlay) */}
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={toggleSidebar}
+              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[120]"
+            />
+
+            {/* 사이드바 본체 */}
+            <motion.aside 
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="fixed top-0 left-0 h-full w-[280px] bg-white z-[130] shadow-2xl p-6 flex flex-col"
+            >
+              <div className="mt-16 mb-10 px-2">
+                <h1 className="text-2xl font-black italic tracking-tighter text-slate-900">
+                  IN-JEONG <span className="text-blue-600">.</span>
+                </h1>
+              </div>
+
+              <nav className="flex-1 space-y-2">
+                {menuItems.map((item) => (
+                  <Link key={item.path} href={item.path} onClick={() => setIsOpen(false)}>
+                    <div className={`flex items-center gap-4 px-5 py-4 rounded-2xl transition-all ${
+                      pathname === item.path ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'
+                    }`}>
+                      {item.icon}
+                      <span className="font-bold">{item.name}</span>
+                    </div>
+                  </Link>
+                ))}
+              </nav>
+
+              <div className="pt-6 border-t border-gray-100">
+                <Link href="/admin" onClick={() => setIsOpen(false)}>
+                  <div className="flex items-center gap-4 px-5 py-4 text-slate-400">
+                    <Lock size={20} />
+                    <span className="font-medium">관리자 설정</span>
+                  </div>
+                </Link>
+              </div>
+            </motion.aside>
+          </>
         )}
       </AnimatePresence>
-
-      {/* 3. 사이드바 본체 (UI 위를 지나감) */}
-      <aside 
-        className={`fixed h-[calc(100dvh-32px)] top-4 left-4 bg-white border border-slate-100 rounded-[32px] py-12 flex flex-col transition-all duration-500 z-[100] shadow-2xl
-          ${isOpen ? 'translate-x-0 w-64' : '-translate-x-[120%] w-64'}`}
-      >
-        <div className="px-8 mb-10 h-8 flex items-center">
-          <h1 className="text-xl font-black tracking-tight uppercase text-slate-900">
-            In-Jeong 🎳
-          </h1>
-        </div>
-
-        <nav className="flex-1 px-2">
-          {menuItems.map((item) => renderItem(item))}
-        </nav>
-
-        <div className="pt-4 px-2 border-t border-gray-50">
-          {renderItem({ name: '설정', icon: <span className="text-[16px]">🔒</span>, path: '/admin' })}
-        </div>
-      </aside>
     </>
   );
 }
