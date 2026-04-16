@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, use } from 'react';
+import React, { useState, use } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { 
   ArrowLeft, Calendar, Users2, Trophy, Target, Wallet, ShieldCheck, Clock, AlertCircle
@@ -11,44 +12,38 @@ export default function EventDetailPage({ params }) {
   const resolvedParams = use(params);
   const eventId = resolvedParams.id;
 
-  const [entries, setEntries] = useState([]);
-  const [eventInfo, setEventInfo] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  const fetchEventData = async () => {
-    try {
-      const { data: eventData } = await supabase.from('event').select('*').eq('event_id', eventId).single();
-      setEventInfo(eventData);
-
+  const { data: eventData, isLoading: loading } = useQuery({
+    queryKey: ['eventDetail', eventId],
+    queryFn: async () => {
+      // 1. 대회 정보 가져오기
+      const { data: eventInfo } = await supabase.from('event').select('*').eq('event_id', eventId).single();
+      
+      // 2. 참가 신청 데이터 가져오기
       const { data: entryData } = await supabase.from('entry').select('*').eq('event_id', eventId);
 
-      if (entryData) {
+      let combinedEntries = [];
+      if (entryData && entryData.length > 0) {
         const userIds = entryData.map(e => e.user_id);
-        const { data: userData } = await supabase
-          .from('user')
-          .select('user_id, name, type_pro')
-          .in('user_id', userIds);
+        const { data: userData } = await supabase.from('user').select('user_id, name, type_pro').in('user_id', userIds);
 
-        const combinedData = entryData.map(entry => {
+        combinedEntries = entryData.map(entry => {
           const userInfo = userData?.find(u => u.user_id === entry.user_id);
           return {
             ...entry,
             user: userInfo,
             userName: userInfo ? userInfo.name : '이름 없음',
           };
-        });
-        // ID 순으로 정렬 유지
-        const sortedData = combinedData.sort((a, b) => a.entry_id - b.entry_id);
-        setEntries(sortedData);
+        }).sort((a, b) => a.entry_id - b.entry_id);
       }
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  useEffect(() => { fetchEventData(); }, [eventId]);
+      return { eventInfo, entries: combinedEntries };
+    },
+    staleTime: 0, // 캐시를 즉시 보여주되 백그라운드에서 갱신
+  });
+
+  // 데이터 구조 분해 (기존 UI 변수명 유지)
+  const eventInfo = eventData?.eventInfo || null;
+  const entries = eventData?.entries || [];
 
   const calculatePrizes = () => {
     if (!eventInfo || !entries) return { prizes: [0, 0, 0], totalRemainder: 0 };
@@ -72,6 +67,7 @@ export default function EventDetailPage({ params }) {
   const confirmedCount = entries.filter(entry => entry.result).length;
 
   if (loading) return <div className="p-20 text-center font-black text-slate-300 animate-pulse italic text-sm tracking-widest">LOADING...</div>;
+  if (!eventInfo) return <div className="p-20 text-center text-slate-400">정보를 불러올 수 없습니다.</div>;
 
   return (
     <section className="max-w-md mx-auto pt-10 pb-24 px-5 font-sans bg-white min-h-screen">

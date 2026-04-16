@@ -1,32 +1,26 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React from 'react'; // 1. useState, useEffect 제거
+import { useQuery } from '@tanstack/react-query'; // 2. useQuery 추가
 import { supabase } from '@/lib/supabase';
 import { Calendar, ChevronRight, Users } from 'lucide-react';
 import Link from 'next/link';
 
 export default function EventListPage() {
-  const [events, setEvents] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // 3. React Query로 데이터 페칭 로직 교체
+  const { data: events = [], isLoading: loading } = useQuery({
+    queryKey: ['events-list'], // 고유 키 설정
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('event')
+        .select(`*, entry(*)`)
+        .order('event_date', { ascending: false });
 
-  useEffect(() => {
-    async function fetchEvents() {
-      try {
-        const { data, error } = await supabase
-          .from('event')
-          .select(`*, entry(*)`)
-          .order('event_date', { ascending: false });
-
-        if (error) throw error;
-        setEvents(data || []);
-      } catch (error) {
-        console.error('Error fetching events:', error.message);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchEvents();
-  }, []);
+      if (error) throw error;
+      return data || [];
+    },
+    staleTime: 0, // 항상 백그라운드에서 최신 DB값 확인
+  });
 
   const formatKoreanDateTime = (dateString) => {
     if (!dateString) return '일정 미정';

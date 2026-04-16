@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, use } from 'react';
+import React, { useState, useEffect, use } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { 
   Users, ArrowLeft, CheckCircle2, 
@@ -14,50 +15,23 @@ export default function EntryManagementPage({ params }) {
   const resolvedParams = use(params);
   const eventId = resolvedParams.id;
   const router = useRouter();
+  const queryClient = useQueryClient(); // 3. 캐시 갱신용 선언
   
-  const [entries, setEntries] = useState([]);
-  const [eventInfo, setEventInfo] = useState(null);
-  const [loading, setLoading] = useState(true);
+  // UI 상태 변수들
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
-
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [searchName, setSearchName] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
   const [addForm, setAddForm] = useState({ pay_person: false, pay_team: false });
 
-  const showToast = (message, type = 'success') => {
-    setToast({ show: true, message, type });
-    setTimeout(() => setToast({ show: false, message: '', type: 'success' }), 2000);
-  };
-
-  // --- 내부 로직 유지 (원본 코드와 동일) ---
-  const totalAmount = entries.reduce((acc, entry) => {
-    return entry.result ? acc + (Number(entry.payment_amount) || 0) : acc;
-  }, 0);
-
-  const paidPersonAmount = entries.reduce((acc, entry) => {
-    if (entry.payment_status && entry.pay_person) {
-      return acc + (Number(eventInfo?.event_pay_person) || 0);
-    }
-    return acc;
-  }, 0);
-
-  const paidTeamAmount = entries.reduce((acc, entry) => {
-    if (entry.payment_status && entry.pay_team) {
-      return acc + (Number(eventInfo?.event_pay_team) || 0);
-    }
-    return acc;
-  }, 0);
-
-  const totalPaidAmount = paidPersonAmount + paidTeamAmount;
-
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
+  // 4. React Query로 데이터 호출 통합
+  const { data: { eventInfo, entries } = { eventInfo: null, entries: [] }, isLoading: loading } = useQuery({
+    queryKey: ['admin-entries', eventId],
+    queryFn: async () => {
+      // (1) 대회 정보
       const { data: eventData } = await supabase.from('event').select('*').eq('event_id', eventId).single();
-      setEventInfo(eventData);
-
+      // (2) 참가자 목록 (유저 이름 포함)
       const { data: entryData, error } = await supabase
         .from('entry')
         .select(`*, user:user_id ( name )`)
@@ -65,57 +39,81 @@ export default function EntryManagementPage({ params }) {
 
       if (error) throw error;
 
+      // 정렬 로직 (기존 정렬 유지)
       const sortedData = (entryData || []).sort((a, b) => {
         const getPriority = (item) => {
           if (!item.result) return 1;
           if (item.result && !item.payment_status) return 2;
           return 3;
         };
-        const priorityA = getPriority(a);
-        const priorityB = getPriority(b);
-        return priorityA !== priorityB ? priorityA - priorityB : a.entry_id - b.entry_id;
+        return getPriority(a) - getPriority(b) || a.entry_id - b.entry_id;
       });
 
-      setEntries(sortedData);
-    } catch (error) {
-      showToast('데이터 로드 실패', 'error');
-    } finally {
-      setLoading(false);
-    }
-  }, [eventId]);
+      return { eventInfo: eventData, entries: sortedData };
+    },
+    staleTime: 0, // 말씀하신 대로 0초 설정! 항상 신선하게 유지
+  });
 
+  const totalAmount = entries.reduce((acc, entry) => {
+    return entry.result ? acc + (Number(entry.payment_amount) || 0) : acc;
+  }, 0);
+
+  // 2. 실 입금액 - 개인전
+  const paidPersonAmount = entries.reduce((acc, entry) => {
+    if (entry.payment_status && entry.pay_person) {
+      return acc + (Number(eventInfo?.event_pay_person) || 0);
+    }
+    return acc;
+  }, 0);
+
+  // 3. 실 입금액 - 팀전
+  const paidTeamAmount = entries.reduce((acc, entry) => {
+    if (entry.payment_status && entry.pay_team) {
+      return acc + (Number(eventInfo?.event_pay_team) || 0);
+    }
+    return acc;
+  }, 0);
+
+  // 4. 최종 실 입금액 합계
+  const totalPaidAmount = paidPersonAmount + paidTeamAmount;
+  
+  // 5. 캐시 갱신용 함수
+  const refreshData = () => {
+    queryClient.invalidateQueries({ queryKey: ['admin-entries', eventId] });
+  };
+
+  // 6. 권한 체크 (useEffect 최소화)
   useEffect(() => {
     const checkAuth = async () => {
-      const { data: { user }, error } = await supabase.auth.getUser();
-      if (error || !user || user.email !== 'injeong@gmail.com') {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user || user.email !== 'injeong@gmail.com') {
         alert('관리자 인증이 필요합니다.');
         router.push('/admin');
-        return;
       }
-      fetchData();
     };
     checkAuth();
-  }, [router, fetchData]);
+  }, [router]);
+
+  // --- 기존 핸들러 함수들 (수정/삭제 시 refreshData 호출로 변경) ---
+  const showToast = (message, type = 'success') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => setToast({ show: false, message: '', type: 'success' }), 2000);
+  };
 
   const handleSidePayToggle = async (entry, field) => {
     if (entry.payment_status) return;
     const nextStatus = !entry[field];
-    const currentPayPerson = field === 'pay_person' ? nextStatus : entry.pay_person;
-    const currentPayTeam = field === 'pay_team' ? nextStatus : entry.pay_team;
     let newAmount = 0;
-    if (currentPayPerson) newAmount += Number(eventInfo.event_pay_person || 0);
-    if (currentPayTeam) newAmount += Number(eventInfo.event_pay_team || 0);
+    const cp = field === 'pay_person' ? nextStatus : entry.pay_person;
+    const ct = field === 'pay_team' ? nextStatus : entry.pay_team;
+    if (cp) newAmount += Number(eventInfo.event_pay_person || 0);
+    if (ct) newAmount += Number(eventInfo.event_pay_team || 0);
+
     try {
-      const { error } = await supabase
-        .from('entry')
-        .update({ [field]: nextStatus, payment_amount: newAmount })
-        .eq('entry_id', entry.entry_id);
-      if (error) throw error;
+      await supabase.from('entry').update({ [field]: nextStatus, payment_amount: newAmount }).eq('entry_id', entry.entry_id);
       showToast('금액이 갱신되었습니다.');
-      fetchData();
-    } catch (error) {
-      showToast('갱신 실패', 'error');
-    }
+      refreshData(); // 캐시 갱신
+    } catch (e) { showToast('갱신 실패', 'error'); }
   };
 
   const handleSearchUser = async () => {
@@ -171,7 +169,7 @@ export default function EntryManagementPage({ params }) {
       showToast('참가자가 추가되었습니다.');
       setIsAddModalOpen(false);
       resetAddForm();
-      fetchData();
+      refreshData();
     } catch (error) {
       alert(error.message);
     }
@@ -211,7 +209,7 @@ export default function EntryManagementPage({ params }) {
         .eq('entry_id', entry.entry_id);
       if (supabaseError) throw supabaseError;
       showToast('상태가 변경되었습니다.');
-      fetchData(); 
+      refreshData(); 
     } catch (err) {
       alert('변경 실패: ' + (err.message || '알 수 없는 오류'));
     }
@@ -222,7 +220,7 @@ export default function EntryManagementPage({ params }) {
       const { error } = await supabase.from('entry').update({ text: value }).eq('entry_id', entry_id);
       if (error) throw error;
       showToast('비고 저장 완료');
-      fetchData();
+      refreshData();
     } catch (error) {
       showToast('저장 실패', 'error');
     }
@@ -235,7 +233,7 @@ export default function EntryManagementPage({ params }) {
       await supabase.from('score').delete().eq('event_id', eventId).eq('user_id', entry.user_id);
       await supabase.from('entry').delete().eq('entry_id', entry.entry_id);
       showToast('정상적으로 삭제되었습니다.');
-      fetchData();
+      refreshData();
     } catch (error) {
       showToast('삭제 실패', 'error');
     }

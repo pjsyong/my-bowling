@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, use } from 'react';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Save, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, User, ChevronDown, ChevronUp, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
@@ -14,6 +14,7 @@ export default function ScoreEntryPage({ params }) {
   const [eventInfo, setEventInfo] = useState(null);
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [expandedId, setExpandedId] = useState(null); // 펼쳐진 유저 ID 관리
   const [toast, setToast] = useState({ show: false, message: '' });
 
   const showToast = (message) => {
@@ -24,12 +25,9 @@ export default function ScoreEntryPage({ params }) {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      // 1. 대회 정보 로드
       const { data: eventData } = await supabase.from('event').select('*').eq('event_id', eventId).single();
       setEventInfo(eventData);
 
-      // 2. 신청 확정된 유저(result: true) 목록 로드
-      // 여기서 user_id만 먼저 가져옵니다.
       const { data: entryData, error: entryError } = await supabase
         .from('entry')
         .select(`user_id`)
@@ -39,16 +37,13 @@ export default function ScoreEntryPage({ params }) {
       if (entryError) throw entryError;
 
       const userIds = entryData.map(e => e.user_id);
-
-      // 3. 해당 유저들의 이름 정보 가져오기
       const { data: userData, error: userError } = await supabase
-        .from('user') // 테이블명이 'users'라면 'users'로 수정
+        .from('user_public')
         .select('user_id, name')
         .in('user_id', userIds);
       
       if (userError) throw userError;
 
-      // 4. 해당 대회의 기존 점수 데이터 가져오기
       const { data: scoreData, error: scoreError } = await supabase
         .from('score')
         .select('*')
@@ -56,7 +51,6 @@ export default function ScoreEntryPage({ params }) {
 
       if (scoreError) throw scoreError;
 
-      // 5. 데이터 조립 (Frontend에서 매칭)
       const formattedEntries = entryData.map(entry => {
         const user = userData?.find(u => u.user_id === entry.user_id);
         const score = scoreData?.find(s => s.user_id === entry.user_id) || {};
@@ -75,8 +69,7 @@ export default function ScoreEntryPage({ params }) {
 
       setEntries(formattedEntries);
     } catch (error) {
-      console.error('Data Fetch Error 상세:', error);
-      // 만약 여기서도 에러가 나면 콘솔에 찍히는 구체적인 내용을 확인해야 합니다.
+      console.error('Data Fetch Error:', error);
     } finally {
       setLoading(false);
     }
@@ -84,129 +77,154 @@ export default function ScoreEntryPage({ params }) {
 
   useEffect(() => {
     const checkAuth = async () => {
-      // 1. Supabase 서버에서 현재 로그인 유저의 세션 정보를 직접 가져옴
       const { data: { user }, error } = await supabase.auth.getUser();
-
-      // 2. 로그인 정보가 없거나, 로그인된 이메일이 관리자(injeong@gmail.com)가 아니면 즉시 차단
       if (error || !user || user.email !== 'injeong@gmail.com') {
         alert('관리자 인증이 필요합니다.');
-        router.push('/admin'); // 로그인 페이지로 리다이렉트
+        router.push('/admin');
         return;
       }
-
-      // 3. 관리자임이 서버에서 확인된 경우에만 데이터를 불러옴
       fetchData();
     };
-
     checkAuth();
   }, [router, fetchData]);
 
-  // 점수 자동 저장 로직
   const handleScoreUpdate = async (user_id, field, value) => {
     const numValue = parseInt(value) || 0;
     const targetEntry = entries.find(e => e.user_id === user_id);
 
+    setEntries(prev => prev.map(e => 
+      e.user_id === user_id ? { ...e, [field]: numValue } : e
+    ));
+
     try {
       if (targetEntry.score_id) {
-        // 기존 점수 업데이트
-        const { error } = await supabase
-          .from('score')
-          .update({ [field]: numValue })
-          .eq('score_id', targetEntry.score_id);
-        if (error) throw error;
+        await supabase.from('score').update({ [field]: numValue }).eq('score_id', targetEntry.score_id);
       } else {
-        // 새로운 점수 레코드 생성
-        const { data, error } = await supabase
-          .from('score')
-          .insert([{
-            user_id,
-            event_id: Number(eventId),
-            [field]: numValue
-          }])
-          .select();
-        
-        if (error) throw error;
-        // 생성된 score_id를 로컬 상태에 업데이트 (다음 수정을 위해)
+        const { data } = await supabase.from('score').insert([{
+          user_id, event_id: Number(eventId), [field]: numValue
+        }]).select();
         if (data) {
-          setEntries(prev => prev.map(e => 
-            e.user_id === user_id ? { ...e, score_id: data[0].score_id, [field]: numValue } : e
-          ));
+          setEntries(prev => prev.map(e => e.user_id === user_id ? { ...e, score_id: data[0].score_id } : e));
         }
       }
-      showToast(`${field.replace('game_', 'Game ')} 저장 완료`);
+      showToast(`${field.split('_')[1]}게임 저장 완료`);
     } catch (error) {
       console.error('Score Update Error:', error);
     }
   };
 
-  if (loading) return <div className="p-10 text-center font-black text-slate-400 tracking-widest">LOADING...</div>;
+  const toggleExpand = (id) => {
+    setExpandedId(expandedId === id ? null : id);
+  };
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center font-black text-slate-300">LOADING...</div>;
 
   return (
-    <div className="max-w-7xl mx-auto py-10 px-6 font-sans relative">
+    <div className="min-h-screen bg-slate-50 pb-20">
       {/* Toast */}
       {toast.show && (
-        <div className="fixed top-10 left-1/2 -translate-x-1/2 z-[100] animate-in fade-in slide-in-from-top-2">
-          <div className="bg-slate-900 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-2 font-bold text-sm">
-            <CheckCircle2 size={16} className="text-emerald-400" />
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] w-[90%] max-w-xs">
+          <div className="bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-2xl flex items-center justify-center gap-2 font-bold text-xs animate-in slide-in-from-top-4">
+            <CheckCircle2 size={14} className="text-emerald-400" />
             {toast.message}
           </div>
         </div>
       )}
 
       {/* Header */}
-      <div className="flex flex-col gap-6 mb-10">
-        <Link href="/admin/scores" className="flex items-center gap-2 text-slate-400 hover:text-slate-600 transition-colors w-fit">
-          <ArrowLeft size={18} />
-          <span className="text-sm font-black uppercase tracking-tighter">Back to List</span>
-        </Link>
-        <div>
-          <h1 className="text-4xl font-black text-slate-900 tracking-tight italic">{eventInfo?.title}</h1>
-          <p className="text-slate-400 font-bold uppercase text-xs mt-1">Score Entry Table</p>
+      <div className="sticky top-0 z-40 bg-white border-b border-slate-100 px-4 py-4 shadow-sm">
+        <div className="max-w-7xl mx-auto flex items-center gap-4">
+          <Link href="/admin/scores" className="p-2 -ml-2 text-slate-400"><ArrowLeft size={24} /></Link>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-lg font-black text-slate-900 truncate">{eventInfo?.title}</h1>
+            <div className="flex items-center gap-2">
+               <span className="text-[10px] font-bold text-blue-500 bg-blue-50 px-2 py-0.5 rounded-full uppercase italic">Admin Mode</span>
+               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{entries.length} Players</span>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Score Table */}
-      <div className="bg-white rounded-[40px] shadow-sm border border-slate-100 overflow-hidden">
-        <table className="w-full text-left border-collapse">
-          <thead className="bg-slate-50/50">
-            <tr>
-              <th className="p-6 w-28 text-[11px] font-black text-slate-400 uppercase tracking-widest border-r border-slate-100">성명</th>
-              {[1, 2, 3, 4, 5].map(num => (
-                <th key={num} className="p-6 text-[11px] font-black text-slate-400 uppercase tracking-widest text-center">Game {num}</th>
-              ))}
-              <th className="p-6 text-[11px] font-black text-slate-900 uppercase tracking-widest text-right bg-slate-100/30">Total</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-50">
-            {entries.map((entry) => {
-              const total = entry.game_1 + entry.game_2 + entry.game_3 + entry.game_4 + entry.game_5;
-              
-              return (
-                <tr key={entry.user_id} className="hover:bg-slate-50/30 transition-all">
-                  <td className="p-6 border-r border-slate-50">
-                    <p className="font-black text-slate-900 text-lg">{entry.user_name}</p>
-                  </td>
-                  
-                  {[1, 2, 3, 4, 5].map(num => (
-                    <td key={num} className="p-4">
-                      <input 
-                        type="number"
-                        defaultValue={entry[`game_${num}`]}
-                        onBlur={(e) => handleScoreUpdate(entry.user_id, `game_${num}`, e.target.value)}
-                        className="w-full bg-slate-50 border-none rounded-xl px-4 py-3 text-center font-black text-slate-700 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
-                        placeholder="0"
-                      />
-                    </td>
-                  ))}
+      <div className="max-w-xl mx-auto p-4 space-y-2">
+        {entries.map((entry) => {
+          const total = entry.game_1 + entry.game_2 + entry.game_3 + entry.game_4 + entry.game_5;
+          const isExpanded = expandedId === entry.user_id;
+          
+          // 각 게임별 입력 여부(0보다 크면 입력됨)를 배열로 구성
+          const gameStatus = [
+            { label: '1G', active: entry.game_1 > 0 },
+            { label: '2G', active: entry.game_2 > 0 },
+            { label: '3G', active: entry.game_3 > 0 },
+            { label: '4G', active: entry.game_4 > 0 },
+            { label: '5G', active: entry.game_5 > 0 },
+          ];
 
-                  <td className="p-6 text-right bg-slate-50/20">
-                    <span className="text-xl font-black text-blue-600">{total}</span>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+          return (
+            <div key={entry.user_id} className={`transition-all duration-200 overflow-hidden ${isExpanded ? 'bg-white rounded-[24px] shadow-md my-4' : 'bg-white rounded-[16px] shadow-sm'}`}>
+              {/* 접혀있을 때의 헤더 영역 */}
+              <button 
+                onClick={() => toggleExpand(entry.user_id)}
+                className="w-full flex items-center justify-between p-4 text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${isExpanded ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'}`}>
+                    <User size={16} />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="font-black text-slate-900 truncate">{entry.user_name}</h3>
+                    
+                    {/* 게임별 입력 상태 배지: 0보다 크면 파란색, 0이면 회색 */}
+                    <div className="flex gap-1 mt-1.5">
+                      {gameStatus.map((game, idx) => (
+                        <div 
+                          key={idx}
+                          className={`text-[8px] font-black px-1.5 py-0.5 rounded-md transition-colors ${
+                            game.active 
+                            ? 'bg-blue-600 text-white' 
+                            : 'bg-slate-100 text-slate-300'
+                          }`}
+                        >
+                          {game.label}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 flex-shrink-0">
+                  <div className="text-right">
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">Total</p>
+                    <p className={`font-black leading-none ${isExpanded ? 'text-2xl text-blue-600' : 'text-lg text-slate-900'}`}>
+                      {total}
+                    </p>
+                  </div>
+                  {isExpanded ? <ChevronUp size={20} className="text-slate-300" /> : <ChevronDown size={20} className="text-slate-300" />}
+                </div>
+              </button>
+
+              {/* 펼쳐졌을 때의 입력 영역 */}
+              {isExpanded && (
+                <div className="px-4 pb-6 animate-in slide-in-from-top-2 duration-200 border-t border-slate-50 mt-2">
+                  <div className="grid grid-cols-5 gap-2 pt-4">
+                    {[1, 2, 3, 4, 5].map((num) => (
+                      <div key={num} className="text-center">
+                        <label className="text-[9px] font-black text-slate-400 mb-1 block uppercase">Game {num}</label>
+                        <input 
+                          type="number"
+                          inputMode="numeric"
+                          defaultValue={entry[`game_${num}`]}
+                          onBlur={(e) => handleScoreUpdate(entry.user_id, `game_${num}`, e.target.value)}
+                          className="w-full bg-slate-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-xl py-3 text-center font-black text-slate-700 outline-none text-sm transition-all"
+                          placeholder="0"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

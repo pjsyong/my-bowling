@@ -1,33 +1,54 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react'; // useEffect 추가
+import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Trophy, Users, Star, Calendar, ChevronDown, Target, Wallet, ListOrdered } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 export default function IntegratedRecordPage() {
   // --- [로직 유지] ---
-  const [events, setEvents] = useState([]);
   const [selectedEventId, setSelectedEventId] = useState(null);
-  const [rankings, setRankings] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState('ranking'); // 'ranking' or 'prize'
+  const [activeTab, setActiveTab] = useState('ranking');
 
+  // 2. 대회 목록 가져오기
+  const { data: events = [], isLoading: isEventsLoading } = useQuery({
+    queryKey: ['events'],
+    queryFn: async () => {
+      const { data } = await supabase.from('event').select('*').order('event_date', { ascending: false });
+      return data || [];
+    },
+  });
+
+  // 3. [추가] 데이터가 로드되면 기본 ID 설정 (이게 없으면 두 번째 진입 시 빈 화면이 뜰 수 있음)
   useEffect(() => {
-    async function initData() {
-      const { data: eventData } = await supabase.from('event').select('*').order('event_date', { ascending: false });
-      setEvents(eventData || []);
-      const activeEvent = eventData?.find(e => e.progress === true) || eventData?.[0];
+    if (events.length > 0 && !selectedEventId) {
+      const activeEvent = events.find(e => e.progress === true) || events[0];
       if (activeEvent) setSelectedEventId(activeEvent.event_id);
-      setLoading(false);
     }
-    initData();
-  }, []);
+  }, [events, selectedEventId]);
 
-  useEffect(() => {
-    if (selectedEventId) fetchRankings(selectedEventId);
-  }, [selectedEventId]);
+  // 4. 랭킹 데이터 가져오기
+  const { data: rankings = [], isLoading: isRankingsLoading } = useQuery({
+    queryKey: ['rankings', selectedEventId],
+    enabled: !!selectedEventId, // ID가 확정되었을 때만 실행
+    queryFn: async () => {
+      const { data: entryData } = await supabase.from('entry').select('*, user:user_public!user_id(name)').eq('event_id', selectedEventId);
+      const { data: scoreData } = await supabase.from('score').select('*').eq('event_id', selectedEventId);
+      
+      return entryData?.map(entry => {
+        const s = scoreData?.find(score => score.user_id === entry.user_id) || {};
+        const scores = [s.game_1 || 0, s.game_2 || 0, s.game_3 || 0, s.game_4 || 0, s.game_5 || 0];
+        const total = scores.reduce((a, b) => a + b, 0);
+        return { ...entry, total, avg: (total / 5).toFixed(1), scores };
+      }).filter(entry => entry.result === true).sort((a, b) => b.total - a.total) || [];
+    },
+    staleTime: 0, // 5분 캐싱
+  });
+
+  // 5. 로딩 변수 통합
+  const loading = isEventsLoading || (!!selectedEventId && isRankingsLoading);
 
   async function fetchRankings(eventId) {
     const { data: entryData } = await supabase.from('entry').select('*, user:user_public!user_id(name)').eq('event_id', eventId);
