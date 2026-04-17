@@ -19,6 +19,34 @@ export default function EventManagementPage() {
   const [editingEvent, setEditingEvent] = useState(null);
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
+  const [formData, setFormData] = useState({
+    title: '',
+    event_type: 'WED',
+    event_date: '',
+    event_pay_person: 0,
+    event_pay_team: 0,
+    max_people: 20,
+    progress: true,
+    end: false,
+    ratio_1: 50,
+    ratio_2: 30,
+    ratio_3: 20,
+    frame: 4
+  });
+
+  // --- 추가된 부분: 날짜 포맷 함수 (에러 방지용) ---
+  const formatDateTimeLocal = (date) => {
+    const d = new Date(date);
+    const offset = d.getTimezoneOffset() * 60000;
+    const localISOTime = (new Date(d - offset)).toISOString().slice(0, 16);
+    return localISOTime;
+  };
+
+  const formatForInput = (dateString) => {
+    if (!dateString) return '';
+    return dateString.replace(' ', 'T').slice(0, 16);
+  };
+
   // 4. React Query로 이벤트 및 통계 데이터 통합 호출
   const { data: events = [], isLoading: loading } = useQuery({
     queryKey: ['admin-events'],
@@ -71,26 +99,66 @@ export default function EventManagementPage() {
     queryClient.invalidateQueries({ queryKey: ['admin-events'] });
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    const totalRatio = Number(formData.ratio_1 || 0) + Number(formData.ratio_2 || 0) + Number(formData.ratio_3 || 0);
-    if (totalRatio !== 100) {
-      showToast('상금 배분율의 합계가 100%여야 합니다.', 'error');
-      return;
-    }
-    try {
-      if (editingEvent) {
-        await supabase.from('event').update(submitData).eq('event_id', editingEvent.event_id);
-      } else {
-        await supabase.from('event').insert([submitData]);
-      }
-      showToast(editingEvent ? '수정되었습니다.' : '등록되었습니다.');
-      setIsModalOpen(false);
-      refreshEvents(); // 7. 수정/등록 후 목록 새로고침
-    } catch (error) {
-      alert('오류 발생: ' + error.message);
-    }
+  const showToast = (message, type = 'success') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => {
+      setToast({ show: false, message: '', type: 'success' });
+    }, 3000);
   };
+
+  const handleSubmit = async (e) => {
+  e.preventDefault();
+
+  // 1. 상금 배분율 합계 체크 (기존 로직)
+  const totalRatio = Number(formData.ratio_1 || 0) + Number(formData.ratio_2 || 0) + Number(formData.ratio_3 || 0);
+  if (totalRatio !== 100) {
+    showToast('상금 배분율의 합계가 100%여야 합니다.', 'error');
+    return;
+  }
+
+  // 2. submitData 정의 (에러 해결 핵심!)
+  // input의 value들은 기본적으로 문자열이므로, 숫자가 필요한 필드는 Number()로 변환해주는 것이 좋습니다.
+  const submitData = {
+    title: formData.title,
+    event_type: formData.event_type,
+    event_date: formData.event_date,
+    event_pay_person: Number(formData.event_pay_person),
+    event_pay_team: Number(formData.event_pay_team),
+    max_people: Number(formData.max_people),
+    progress: formData.progress,
+    end: formData.end,
+    ratio_1: Number(formData.ratio_1),
+    ratio_2: Number(formData.ratio_2),
+    ratio_3: Number(formData.ratio_3),
+    frame: Number(formData.frame),
+  };
+
+  try {
+    if (editingEvent) {
+      // 수정 모드
+      const { error } = await supabase
+        .from('event')
+        .update(submitData)
+        .eq('event_id', editingEvent.event_id);
+      
+      if (error) throw error;
+    } else {
+      // 신규 등록 모드
+      const { error } = await supabase
+        .from('event')
+        .insert([submitData]);
+      
+      if (error) throw error;
+    }
+
+    showToast(editingEvent ? '수정되었습니다.' : '등록되었습니다.');
+    setIsModalOpen(false);
+    refreshEvents(); // 목록 새로고침
+  } catch (error) {
+    console.error(error);
+    alert('오류 발생: ' + error.message);
+  }
+};
 
   const handleDelete = async (id) => {
     if (!confirm('정말로 삭제하시겠습니까?')) return;
