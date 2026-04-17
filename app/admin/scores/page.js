@@ -12,6 +12,8 @@ import { useRouter } from 'next/navigation';
 export default function ScoreManagementHub() {
   const router = useRouter();
 
+  const [activeFilter, setActiveFilter] = React.useState('ALL'); // 'ALL', 'WED', 'RANK'
+
   // 3. React Query로 대회 목록 호출
   const { data: events = [], isLoading: loading } = useQuery({
     queryKey: ['admin-score-events'],
@@ -26,6 +28,10 @@ export default function ScoreManagementHub() {
     },
     staleTime: 0, // 항상 최신 목록을 확인하도록 설정
   });
+
+  const filteredEvents = events.filter(event => 
+    activeFilter === 'ALL' ? true : event.event_type === activeFilter
+  );
 
   // 4. 권한 체크 전용 useEffect
   useEffect(() => {
@@ -58,7 +64,26 @@ export default function ScoreManagementHub() {
 
       {/* Event List Container */}
       <div className="max-w-xl mx-auto p-4 space-y-5">
-        {events.map((event) => (
+        <div className="flex bg-white/50 p-1.5 rounded-[24px] border border-slate-100 gap-1 mb-2">
+          {[
+            { id: 'ALL', label: '전체' },
+            { id: 'WED', label: '수발이' },
+            { id: 'RANK', label: '랭킹전' }
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveFilter(tab.id)}
+              className={`flex-1 py-3 rounded-[20px] text-xs font-black transition-all ${
+                activeFilter === tab.id 
+                  ? 'bg-white text-blue-600 shadow-sm shadow-blue-100' 
+                  : 'text-slate-400'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        {filteredEvents.map((event) => (
           <Link 
             href={`/admin/scores/${event.event_id}`} 
             key={event.event_id}
@@ -97,6 +122,11 @@ export default function ScoreManagementHub() {
             </div>
           </Link>
         ))}
+        {filteredEvents.length === 0 && (
+          <div className="py-20 text-center text-slate-300 font-bold text-sm">
+            해당 카테고리의 대회가 없습니다.
+          </div>
+        )}
       </div>
     </div>
   );

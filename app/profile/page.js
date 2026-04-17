@@ -14,6 +14,8 @@ export default function ProfilePage() {
   const [isSearching, setIsSearching] = useState(false);
   const [debugData, setDebugData] = useState(null); // 디버깅용
 
+  const [activeFilter, setActiveFilter] = useState('ALL'); // 'ALL', 'WED', 'RANK'
+
   // 1. 유저 검색
   const handleSearch = async (e) => {
     e.preventDefault();
@@ -34,49 +36,40 @@ export default function ProfilePage() {
     queryKey: ['personal-records', selectedUser?.id],
     enabled: !!selectedUser?.id,
     queryFn: async () => {
-      // 쿼리 시 score 테이블의 모든 컬럼을 명시적으로 확인
       const { data, error } = await supabase
         .from('score')
         .select(`
           game_1, game_2, game_3, game_4, game_5,
           event_id,
-          event:event_id ( title, event_date )
+          event:event_id ( title, event_date, event_type ) // event_type 추가
         `)
         .eq('user_id', selectedUser.id);
 
-      if (error) {
-        console.error("Supabase Error:", error);
-        throw error;
-      }
-
-      setDebugData(data); // 원본 데이터 디버깅용 저장
+      if (error) throw error;
 
       return data.map(d => {
-        // [수정] CSV 분석 결과, 값이 비어있거나 문자열인 경우를 더 확실하게 처리
         const rawValues = [d.game_1, d.game_2, d.game_3, d.game_4, d.game_5];
-        
-        const validScores = rawValues
-          .map(v => {
-            if (v === null || v === undefined || String(v).trim() === "") return NaN;
-            return Number(v);
-          })
-          .filter(v => !isNaN(v) && v > 0);
-
-        const total = validScores.reduce((acc, cur) => acc + cur, 0);
-        const average = validScores.length > 0 ? total / validScores.length : 0;
+        const processedScores = rawValues.map(v => (v === null || v === "" || Number(v) === 0 ? NaN : Number(v)));
+        const validScores = processedScores.filter(v => !isNaN(v));
+        const average = validScores.length > 0 ? validScores.reduce((a, b) => a + b, 0) / validScores.length : 0;
 
         return {
           date: d.event?.event_date?.split('T')[0] || '-',
           event: d.event?.title || '알 수 없는 대회',
+          eventType: d.event?.event_type || 'WED', // 기본값 설정
           score: Math.round(average),
-          gameCount: validScores.length
+          rawScores: processedScores
         };
-      }).sort((a, b) => new Date(a.date) - new Date(b.date)); // 날짜순 정렬
+      }).sort((a, b) => new Date(a.date) - new Date(b.date));
     },
   });
 
+  const filteredData = userRecordData.filter(d => 
+    activeFilter === 'ALL' ? true : d.eventType === activeFilter
+  );
+
   // 통계 계산
-  const scores = userRecordData.map(d => d.score).filter(s => s > 0);
+  const scores = filteredData.map(d => d.score).filter(s => s > 0);
   const avgScore = scores.length > 0 ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : 0;
   const consistency = scores.length > 1 
     ? (scores.slice(1).reduce((acc, cur, i) => acc + Math.abs(cur - scores[i]), 0) / (scores.length - 1)).toFixed(1)
@@ -131,11 +124,11 @@ export default function ProfilePage() {
               <h2 className="text-4xl font-black mb-6">{selectedUser.name}</h2>
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-white/10 p-4 rounded-[24px]">
-                  <p className="text-[10px] font-black text-indigo-200 uppercase mb-1">Total Avg</p>
+                  <p className="text-[10px] font-black text-indigo-200 uppercase mb-1">전체 평균</p>
                   <p className="text-2xl font-black">{avgScore}</p>
                 </div>
                 <div className="bg-white/10 p-4 rounded-[24px]">
-                  <p className="text-[10px] font-black text-indigo-200 uppercase mb-1">Consistency</p>
+                  <p className="text-[10px] font-black text-indigo-200 uppercase mb-1">일관성</p>
                   <p className="text-2xl font-black">{consistency}pt</p>
                 </div>
               </div>
@@ -150,25 +143,126 @@ export default function ProfilePage() {
                 </div>
             ) : (
               <>
-                <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm">
-                  <div className="h-48 w-full">
+              <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm">
+                {/* 1. 가로 스크롤 컨테이너 (데이터가 많아지면 우측 스크롤 활성화) */}
+                <div className="h-64 w-full pt-4 overflow-x-auto overflow-y-hidden scrollbar-hide">
+                  {/* 2. 데이터 개수에 따라 최소 너비를 동적으로 계산 (1개당 70px) */}
+                  <div 
+                    style={{ 
+                      width: filteredData.length > 5 
+                        ? `${filteredData.length * 70}px` 
+                        : '100%',
+                      height: '100%' 
+                    }}
+                  >
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={userRecordData}>
+                      <LineChart 
+                        data={filteredData} 
+                        margin={{ top: 40, right: 40, left: 10, bottom: 10 }}
+                      >
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                        <XAxis dataKey="date" hide />
-                        <YAxis domain={['dataMin - 20', 'dataMax + 20']} hide />
-                        <Tooltip contentStyle={{ borderRadius: '24px', border: 'none' }} />
-                        <ReferenceLine y={Number(avgScore)} stroke="#6366f1" strokeDasharray="5 5" />
-                        <Line type="monotone" dataKey="score" stroke="#6366f1" strokeWidth={5} dot={{ r: 6, fill: '#6366f1', strokeWidth: 3, stroke: '#fff' }} />
+                        
+                        <XAxis 
+                          dataKey="date" 
+                          tick={{ fontSize: 10, fontWeight: 'bold', fill: '#cbd5e1' }}
+                          tickLine={false}
+                          axisLine={false}
+                          dy={10}
+                        />
+                        
+                        {/* 3. Y축: 다른 눈금은 모두 숨기고 '평균값' 숫자 하나만 표시 */}
+                        <YAxis 
+                          domain={['dataMin - 30', 'dataMax + 30']} 
+                          ticks={[Number(avgScore)]} 
+                          tick={{ fontSize: 11, fontWeight: '900', fill: '#6366f1' }}
+                          tickLine={false}
+                          axisLine={false}
+                          width={35}
+                        />
+                        
+                        <Tooltip 
+                          content={({ active, payload }) => {
+                            if (active && payload && payload.length) {
+                              const data = payload[0].payload;
+                              return (
+                                <div className="bg-slate-900 text-white p-3 rounded-2xl shadow-xl border-none">
+                                  <p className="text-[10px] font-bold text-slate-400 mb-1">{data.date}</p>
+                                  <p className="text-xs font-black mb-2">{data.event}</p>
+                                  <div className="flex flex-col gap-1 border-t border-white/10 pt-2">
+                                    <p className="text-lg font-black text-indigo-400">AVG {data.score}</p>
+                                    <p className="text-[9px] font-medium text-slate-300 font-mono">
+                                      {/* 1~5게임 상세 점수 표시 */}
+                                      {data.rawScores?.map((s, i) => isNaN(s) ? '-' : s).join(' / ')}
+                                    </p>
+                                  </div>
+                                </div>
+                              );
+                            }
+                            return null;
+                          }}
+                        />
+
+                        {/* 4. 평균 기준선 (가로 점선) */}
+                        <ReferenceLine 
+                          y={Number(avgScore)} 
+                          stroke="#6366f1" 
+                          strokeDasharray="5 5" 
+                        />
+
+                        <Line 
+                          type="monotone" 
+                          dataKey="score" 
+                          stroke="#6366f1" 
+                          strokeWidth={4} 
+                          animationDuration={500}
+                          dot={{ r: 5, fill: '#6366f1', strokeWidth: 2, stroke: '#fff' }}
+                          activeDot={{ r: 8 }}
+                          // 점 위에 직접 점수 레이블 표시
+                          label={{ 
+                            position: 'top', 
+                            fill: '#6366f1', 
+                            fontSize: 12, 
+                            fontWeight: '900',
+                            offset: 15 
+                          }}
+                        />
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
                 </div>
+              </div>
 
-                <div className="space-y-3">
-                  {userRecordData.slice().reverse().map((record, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-6 bg-white border border-slate-50 rounded-[32px] shadow-sm">
-                      <div className="flex flex-col">
+              <div className="flex bg-white/50 p-1.5 rounded-[24px] border border-slate-100 gap-1">
+                {[
+                  { id: 'ALL', label: '전체' },
+                  { id: 'WED', label: '수발이' },
+                  { id: 'RANK', label: '랭킹전' }
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveFilter(tab.id)}
+                    className={`flex-1 py-3 rounded-[20px] text-xs font-black transition-all ${
+                      activeFilter === tab.id 
+                        ? 'bg-white text-indigo-600 shadow-sm shadow-indigo-100' 
+                        : 'text-slate-400'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="space-y-3">
+                {filteredData.slice().reverse().map((record, idx) => (
+                  <div key={idx} className="p-6 bg-white border border-slate-50 rounded-[32px] shadow-sm">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex flex-col gap-1">
+                        {/* 타입에 따른 뱃지 추가 */}
+                        <span className={`w-fit px-2 py-0.5 rounded-full text-[8px] font-black text-white uppercase ${
+                          record.eventType === 'RANK' ? 'bg-orange-500' : 'bg-indigo-600'
+                        }`}>
+                          {record.eventType === 'RANK' ? 'RANKING' : 'SU-BAL-I'}
+                        </span>
                         <span className="text-sm font-black text-slate-800">{record.event}</span>
                         <span className="text-[10px] font-bold text-slate-400">{record.date}</span>
                       </div>
@@ -179,13 +273,29 @@ export default function ProfilePage() {
                         </p>
                       </div>
                     </div>
-                  ))}
-                </div>
+                    
+                    {/* 1~5 게임 점수 영역 */}
+                    <div className="flex gap-2 justify-between border-t border-slate-50 pt-4">
+                      {record.rawScores.map((s, i) => (
+                        <div key={i} className="flex flex-col items-center flex-1">
+                          <span className="text-[8px] font-black text-slate-300 mb-1">{i + 1}G</span>
+                          <span className="text-xs font-bold text-slate-600">{isNaN(s) ? '-' : s}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+            </div>
               </>
             )}
           </motion.div>
         )}
       </AnimatePresence>
+       {filteredData.length === 0 && (
+          <div className="py-20 text-center text-slate-300 font-bold text-sm">
+            해당 카테고리의 대회가 없습니다.
+          </div>
+        )}
     </div>
   );
 }

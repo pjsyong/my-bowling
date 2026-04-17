@@ -1,25 +1,29 @@
 'use client';
 
-import React from 'react'; // 1. useState, useEffect 제거
-import { useQuery } from '@tanstack/react-query'; // 2. useQuery 추가
+import React, { useState } from 'react'; // 1. useState 추가
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { Calendar, ChevronRight, Users } from 'lucide-react';
 import Link from 'next/link';
 
 export default function EventListPage() {
-  // 3. React Query로 데이터 페칭 로직 교체
+  // 현재 선택된 필터 상태 (기본값: 'WED')
+  const [activeType, setActiveType] = useState('WED');
+
+  // 2. queryKey에 activeType을 추가하여 상태 변경 시 자동으로 다시 페칭
   const { data: events = [], isLoading: loading } = useQuery({
-    queryKey: ['events-list'], // 고유 키 설정
+    queryKey: ['events-list', activeType], 
     queryFn: async () => {
       const { data, error } = await supabase
         .from('event')
         .select(`*, entry(*)`)
+        .eq('event_type', activeType) // 선택된 타입만 필터링
         .order('event_date', { ascending: false });
 
       if (error) throw error;
       return data || [];
     },
-    staleTime: 0, // 항상 백그라운드에서 최신 DB값 확인
+    staleTime: 0,
   });
 
   const formatKoreanDateTime = (dateString) => {
@@ -28,7 +32,6 @@ export default function EventListPage() {
     const [datePart, timePart] = cleanDate.split(' ');
     const week = ['일', '월', '화', '수', '목', '금', '토'];
     const dayOfWeek = week[new Date(datePart).getDay()];
-    // 날짜 가독성 개선 (예: 04.16 목)
     const [_, month, day] = datePart.split('-');
     return `${month}.${day} (${dayOfWeek}) ${timePart}`;
   };
@@ -36,11 +39,35 @@ export default function EventListPage() {
   if (loading) return <div className="p-20 text-center font-black text-slate-300 tracking-widest animate-pulse">LOADING...</div>;
 
   return (
-    <section className="max-w-md mx-auto pt-16 pb-12">
+    <section className="max-w-md mx-auto pt-16 pb-12 px-4"> {/* 모바일 여백 추가 */}
       {/* 헤더 영역 */}
-      <div className="mb-10 px-2">
+      <div className="mb-8">
         <h2 className="text-3xl font-black text-slate-900 italic uppercase leading-none mb-2">대회 목록</h2>
         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em]">Bowling Tournament List</p>
+      </div>
+
+      {/* 필터 탭 버튼 추가 */}
+      <div className="flex gap-2 mb-8 bg-slate-100 p-1 rounded-2xl">
+        <button
+          onClick={() => setActiveType('WED')}
+          className={`flex-1 py-3 text-sm font-black rounded-xl transition-all ${
+            activeType === 'WED' 
+            ? 'bg-white text-indigo-600 shadow-sm' 
+            : 'text-slate-400 hover:text-slate-600'
+          }`}
+        >
+          수발이
+        </button>
+        <button
+          onClick={() => setActiveType('RANK')}
+          className={`flex-1 py-3 text-sm font-black rounded-xl transition-all ${
+            activeType === 'RANK' 
+            ? 'bg-white text-indigo-600 shadow-sm' 
+            : 'text-slate-400 hover:text-slate-600'
+          }`}
+        >
+          벙개
+        </button>
       </div>
 
       <div className="space-y-4">
@@ -59,7 +86,6 @@ export default function EventListPage() {
                 <div className={`relative overflow-hidden bg-white p-6 rounded-[32px] border transition-all active:scale-[0.98] ${
                   isClosed ? 'border-slate-100 opacity-70' : 'border-slate-50 shadow-sm shadow-slate-100 hover:border-indigo-100'
                 }`}>
-                  {/* 상단: 상태 및 날짜 */}
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-2">
                       {isClosed ? (
@@ -75,7 +101,6 @@ export default function EventListPage() {
                     <ChevronRight size={18} className="text-slate-300 group-hover:text-indigo-600 transition-colors" />
                   </div>
                   
-                  {/* 중앙: 타이틀 */}
                   <div className="mb-4">
                     <h3 className={`text-lg font-black tracking-tight leading-tight ${
                       isClosed ? 'text-slate-500' : 'text-slate-900'
@@ -84,7 +109,6 @@ export default function EventListPage() {
                     </h3>
                   </div>
 
-                  {/* 하단: 인원 정보 */}
                   <div className="flex items-center justify-between pt-4 border-t border-slate-50">
                     <div className="flex items-center gap-1.5">
                       <Users size={14} className="text-slate-300" />
@@ -103,7 +127,9 @@ export default function EventListPage() {
           })
         ) : (
           <div className="py-20 text-center border-2 border-dashed border-slate-100 rounded-[40px]">
-            <p className="text-slate-300 font-black italic uppercase text-xs">No events found.</p>
+            <p className="text-slate-300 font-black italic uppercase text-xs">
+              {activeType === 'WED' ? '수발이' : '벙개'} 내역이 없습니다.
+            </p>
           </div>
         )}
       </div>

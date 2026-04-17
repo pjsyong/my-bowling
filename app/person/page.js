@@ -13,12 +13,12 @@ export default function IntegratedRecordPage() {
 
   // 2. 대회 목록 가져오기 (event_type이 'WED'인 데이터만 필터링)
   const { data: events = [], isLoading: isEventsLoading } = useQuery({
-    queryKey: ['events', 'WED'], // 쿼리 키에 타입 명시
+    queryKey: ['events', 'RANK'], // 쿼리 키에 타입 명시
     queryFn: async () => {
       const { data } = await supabase
         .from('event')
         .select('*')
-        .eq('event_type', 'WED') // 'WED' 타입만 노출하도록 필터 추가
+        .eq('event_type', 'RANK') // 'WED' 타입만 노출하도록 필터 추가
         .order('event_date', { ascending: false });
       return data || [];
     },
@@ -26,21 +26,21 @@ export default function IntegratedRecordPage() {
 
   // 3. 데이터 로드 시 기본 ID 설정 로직 유지
   useEffect(() => {
-    if (events.length > 0 && !selectedEventId) {
-      // events는 이미 쿼리에서 event_type='WED' 및 날짜 역순으로 정렬되어 옴
-      
-      // WED 중 progress가 true인 가장 최신(첫 번째) 이벤트를 탐색
-      const activeEvent = events.find(e => e.progress === true);
-      
-      if (activeEvent) {
-        // 조건에 맞는(progress: true) 이벤트가 있으면 해당 ID 세팅
-        setSelectedEventId(activeEvent.event_id);
-      } else {
-        // 만약 progress가 모두 false라면 목록 중 가장 최신(첫 번째) 항목 세팅
-        setSelectedEventId(events[0].event_id);
+      if (events.length > 0 && !selectedEventId) {
+        // events는 이미 쿼리에서 event_type='WED' 및 날짜 역순으로 정렬되어 옴
+        
+        // WED 중 progress가 true인 가장 최신(첫 번째) 이벤트를 탐색
+        const activeEvent = events.find(e => e.progress === true);
+        
+        if (activeEvent) {
+          // 조건에 맞는(progress: true) 이벤트가 있으면 해당 ID 세팅
+          setSelectedEventId(activeEvent.event_id);
+        } else {
+          // 만약 progress가 모두 false라면 목록 중 가장 최신(첫 번째) 항목 세팅
+          setSelectedEventId(events[0].event_id);
+        }
       }
-    }
-  }, [events, selectedEventId]);
+    }, [events, selectedEventId]);
 
   // 4. 랭킹 데이터 가져오기
   const { data: rankings = [], isLoading: isRankingsLoading } = useQuery({
@@ -110,7 +110,7 @@ export default function IntegratedRecordPage() {
     <div className="max-w-md mx-auto pt-16">
       {/* 1. 대회 선택 헤더 */}
       <div className="mb-8 px-2">
-        <h2 className="text-2xl font-black text-slate-900 mb-1">인정 볼링장 - 수발이</h2>
+        <h2 className="text-2xl font-black text-slate-900 mb-1">인정 볼링장 - 벙개</h2>
         <div className="relative">
           <button 
             onClick={() => setIsDropdownOpen(!isDropdownOpen)} 
@@ -211,111 +211,111 @@ export default function IntegratedRecordPage() {
 
       {/* 4. 컨텐츠 영역 */}
       <AnimatePresence mode="wait">
-              {!selectedEvent?.progress ? (
-              // progress가 false인 경우 노출할 안내 문구
-              <motion.div 
-                  key="not-started"
-                  initial={{ opacity: 0 }} 
-                  animate={{ opacity: 1 }} 
-                  exit={{ opacity: 0 }}
-                  className="py-20 text-center"
-              >
-                  <div className="bg-slate-50 rounded-[32px] p-10 border-2 border-dashed border-slate-200">
-                  <Calendar size={40} className="mx-auto text-slate-300 mb-4" />
-                  <p className="text-slate-500 font-black text-base mb-1">진행 예정인 이벤트입니다</p>
-                  <p className="text-slate-400 text-xs font-bold">대회 시작 전에는 기록을 확인하실 수 없습니다.</p>
+        {!selectedEvent?.progress ? (
+        // progress가 false인 경우 노출할 안내 문구
+        <motion.div 
+            key="not-started"
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            exit={{ opacity: 0 }}
+            className="py-20 text-center"
+        >
+            <div className="bg-slate-50 rounded-[32px] p-10 border-2 border-dashed border-slate-200">
+            <Calendar size={40} className="mx-auto text-slate-300 mb-4" />
+            <p className="text-slate-500 font-black text-base mb-1">진행 예정인 이벤트입니다</p>
+            <p className="text-slate-400 text-xs font-bold">대회 시작 전에는 기록을 확인하실 수 없습니다.</p>
+            </div>
+        </motion.div>
+        ) : activeTab === 'ranking' ? (
+        <motion.div key="ranking" initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }} className="space-y-4">
+            {rankings.map((p, i) => (
+              <div key={i} className="bg-white border border-slate-50 rounded-[32px] p-5 shadow-sm hover:border-indigo-100 transition-all">
+                <div className="flex justify-between items-center mb-4">
+                  <div className="flex items-center gap-4">
+                    <span className={`w-10 h-10 rounded-full flex items-center justify-center font-black ${i < 3 ? 'bg-amber-100 text-amber-600' : 'bg-slate-50 text-slate-400'}`}>
+                      {i + 1}
+                    </span>
+                    <div>
+                      <h4 className="font-bold text-slate-900 text-base">{p.user?.name}</h4>
+                      <p className="text-[11px] font-bold text-slate-400 uppercase tracking-tight">Avg. {p.avg} / Total {p.total}</p>
+                    </div>
                   </div>
-              </motion.div>
-              ) : activeTab === 'ranking' ? (
-              <motion.div key="ranking" initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }} className="space-y-4">
-                  {rankings.map((p, i) => (
-                    <div key={i} className="bg-white border border-slate-50 rounded-[32px] p-5 shadow-sm hover:border-indigo-100 transition-all">
-                      <div className="flex justify-between items-center mb-4">
-                        <div className="flex items-center gap-4">
-                          <span className={`w-10 h-10 rounded-full flex items-center justify-center font-black ${i < 3 ? 'bg-amber-100 text-amber-600' : 'bg-slate-50 text-slate-400'}`}>
-                            {i + 1}
-                          </span>
-                          <div>
-                            <h4 className="font-bold text-slate-900 text-base">{p.user?.name}</h4>
-                            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-tight">Avg. {p.avg} / Total {p.total}</p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-2xl font-black text-slate-900 leading-none">{p.total}</div>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-5 gap-1.5 pt-4 border-t border-slate-50">
-                        {p.scores.map((score, idx) => (
-                          <div key={idx} className={`text-center py-2 rounded-xl text-xs font-black ${score >= 200 ? 'bg-red-50 text-red-500' : 'bg-slate-50 text-slate-600'}`}>
-                            {score || '-'}
-                          </div>
-                        ))}
-                      </div>
+                  <div className="text-right">
+                    <div className="text-2xl font-black text-slate-900 leading-none">{p.total}</div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-5 gap-1.5 pt-4 border-t border-slate-50">
+                  {p.scores.map((score, idx) => (
+                    <div key={idx} className={`text-center py-2 rounded-xl text-xs font-black ${score >= 200 ? 'bg-red-50 text-red-500' : 'bg-slate-50 text-slate-600'}`}>
+                      {score || '-'}
                     </div>
                   ))}
-                </motion.div>
-              ) : (
-                <motion.div key="prize" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}>
-                  {/* 상금 단가 요약 */}
-                  {(() => {
-                    const confirmedCount = rankings.filter(r => r.result === true && r.pay_person === true).length;
-                    const { prizes, totalRemainder } = getPrizeData(selectedEvent?.event_pay_person, confirmedCount, { r1: selectedEvent?.ratio_1, r2: selectedEvent?.ratio_2, r3: selectedEvent?.ratio_3 }, selectedEvent?.frame);
-                    
-                    return (
-                      <div className="space-y-6">
-                        <div className="bg-indigo-600 rounded-[32px] p-6 text-white shadow-xl shadow-indigo-100">
-                          <p className="text-[10px] font-bold uppercase tracking-widest opacity-80 mb-4 text-center">Standard Prize (Per Game)</p>
-                          <div className="flex justify-between items-center mb-6">
-                            <div className="text-center">
-                              <span className="text-2xl block mb-1">🥇</span>
-                              <span className="text-sm font-black">{prizes[0].toLocaleString()}</span>
-                            </div>
-                            <div className="h-8 w-[1px] bg-white/20"></div>
-                            <div className="text-center">
-                              <span className="text-2xl block mb-1">🥈</span>
-                              <span className="text-sm font-black">{prizes[1].toLocaleString()}</span>
-                            </div>
-                            <div className="h-8 w-[1px] bg-white/20"></div>
-                            <div className="text-center">
-                              <span className="text-2xl block mb-1">🥉</span>
-                              <span className="text-sm font-black">{prizes[2].toLocaleString()}</span>
-                            </div>
-                          </div>
-                          <div className="bg-white/10 rounded-2xl py-4 px-5 space-y-3">
-                            <div className="flex justify-between items-center border-b border-white/10 pb-2">
-                              <span className="text-xs font-medium opacity-80">총 상금</span>
-                              <span className="font-black text-base">
-                                {(selectedEvent?.event_pay_person * confirmedCount).toLocaleString()}원
-                              </span>
-                            </div>
-                            <div className="flex justify-between items-center pt-1">
-                              <span className="text-xs font-medium opacity-80">잔여 상금 (개인사이드)</span>
-                              <span className="font-black text-base text-amber-300">
-                                {totalRemainder.toLocaleString()}원
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-      
-                        {/* 수령자 목록 */}
-                        <div className="space-y-3">
-                          <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest pl-2">Total Winners</h3>
-                          {calculateWinners().map((winner, idx) => (
-                            <div key={idx} className="flex items-center justify-between p-5 bg-white border border-slate-100 rounded-[28px] shadow-sm">
-                              <div className="flex items-center gap-4">
-                                <span className="text-sm font-black text-slate-300">#{idx+1}</span>
-                                <span className="font-bold text-slate-800">{winner.name}</span>
-                              </div>
-                              <span className="font-black text-indigo-600 text-lg">
-                                {winner.totalPrize.toLocaleString()}<span className="text-xs ml-0.5">원</span>
-                              </span>
-                            </div>
-                          ))}
-                        </div>
+                </div>
+              </div>
+            ))}
+          </motion.div>
+        ) : (
+          <motion.div key="prize" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}>
+            {/* 상금 단가 요약 */}
+            {(() => {
+              const confirmedCount = rankings.filter(r => r.result === true && r.pay_person === true).length;
+              const { prizes, totalRemainder } = getPrizeData(selectedEvent?.event_pay_person, confirmedCount, { r1: selectedEvent?.ratio_1, r2: selectedEvent?.ratio_2, r3: selectedEvent?.ratio_3 }, selectedEvent?.frame);
+              
+              return (
+                <div className="space-y-6">
+                  <div className="bg-indigo-600 rounded-[32px] p-6 text-white shadow-xl shadow-indigo-100">
+                    <p className="text-[10px] font-bold uppercase tracking-widest opacity-80 mb-4 text-center">Standard Prize (Per Game)</p>
+                    <div className="flex justify-between items-center mb-6">
+                      <div className="text-center">
+                        <span className="text-2xl block mb-1">🥇</span>
+                        <span className="text-sm font-black">{prizes[0].toLocaleString()}</span>
                       </div>
-                    );
-                  })()}
-                </motion.div>
+                      <div className="h-8 w-[1px] bg-white/20"></div>
+                      <div className="text-center">
+                        <span className="text-2xl block mb-1">🥈</span>
+                        <span className="text-sm font-black">{prizes[1].toLocaleString()}</span>
+                      </div>
+                      <div className="h-8 w-[1px] bg-white/20"></div>
+                      <div className="text-center">
+                        <span className="text-2xl block mb-1">🥉</span>
+                        <span className="text-sm font-black">{prizes[2].toLocaleString()}</span>
+                      </div>
+                    </div>
+                    <div className="bg-white/10 rounded-2xl py-4 px-5 space-y-3">
+                      <div className="flex justify-between items-center border-b border-white/10 pb-2">
+                        <span className="text-xs font-medium opacity-80">총 상금</span>
+                        <span className="font-black text-base">
+                          {(selectedEvent?.event_pay_person * confirmedCount).toLocaleString()}원
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center pt-1">
+                        <span className="text-xs font-medium opacity-80">잔여 상금 (개인사이드)</span>
+                        <span className="font-black text-base text-amber-300">
+                          {totalRemainder.toLocaleString()}원
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 수령자 목록 */}
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest pl-2">Total Winners</h3>
+                    {calculateWinners().map((winner, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-5 bg-white border border-slate-100 rounded-[28px] shadow-sm">
+                        <div className="flex items-center gap-4">
+                          <span className="text-sm font-black text-slate-300">#{idx+1}</span>
+                          <span className="font-bold text-slate-800">{winner.name}</span>
+                        </div>
+                        <span className="font-black text-indigo-600 text-lg">
+                          {winner.totalPrize.toLocaleString()}<span className="text-xs ml-0.5">원</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

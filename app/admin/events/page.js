@@ -19,6 +19,8 @@ export default function EventManagementPage() {
   const [editingEvent, setEditingEvent] = useState(null);
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
+  const [activeType, setActiveType] = useState('WED');
+  
   const [formData, setFormData] = useState({
     title: '',
     event_type: 'WED',
@@ -81,6 +83,8 @@ export default function EventManagementPage() {
     },
     staleTime: 0, // 관리자 페이지이므로 1분간 캐시 유지
   });
+
+  const filteredEvents = events.filter(event => event.event_type === activeType);
 
   // 5. 인증 체크 (useEffect는 인증 전용으로만 사용)
   useEffect(() => {
@@ -211,66 +215,97 @@ export default function EventManagementPage() {
           </button>
         </div>
       </header>
+          
+      <div className="flex gap-2 mb-8 bg-slate-100 p-1 rounded-2xl">
+        <button
+          onClick={() => setActiveType('WED')}
+          className={`flex-1 py-3 text-[11px] font-black rounded-xl transition-all ${
+            activeType === 'WED' 
+            ? 'bg-white text-indigo-600 shadow-sm' 
+            : 'text-slate-400 hover:text-slate-600'
+          }`}
+        >
+          수발이
+        </button>
+        <button
+          onClick={() => setActiveType('RANK')}
+          className={`flex-1 py-3 text-[11px] font-black rounded-xl transition-all ${
+            activeType === 'RANK' 
+            ? 'bg-white text-amber-600 shadow-sm' 
+            : 'text-slate-400 hover:text-slate-600'
+          }`}
+        >
+          벙개
+        </button>
+      </div>
 
       {/* Event List */}
       <div className="space-y-4">
-        {events.map((event) => (
-          <div key={event.event_id} className="bg-white rounded-[32px] p-6 border border-slate-100 shadow-sm active:bg-slate-50 transition-colors">
-            <div className="flex justify-between items-center mb-4">
-              <span className={`px-3 py-0.5 rounded-full text-[9px] font-black tracking-tighter ${event.event_type === 'WED' ? 'bg-indigo-600 text-white' : 'bg-amber-500 text-white'}`}>
-                {event.event_type === 'WED' ? 'SU-BAL-I' : 'RANKING'}
-              </span>
-              <div className="flex gap-2">
-                <button onClick={() => { 
-                  setEditingEvent(event); 
-                  setFormData({ ...event, event_date: formatForInput(event.event_date) }); 
-                  setIsModalOpen(true); 
-                }} className="p-2 text-slate-300 hover:text-slate-900"><Pencil size={16} /></button>
-                <button onClick={() => handleDelete(event.event_id)} className="p-2 text-slate-300 hover:text-red-500"><Trash2 size={16} /></button>
-              </div>
-            </div>
-
-            <h3 className="text-xl font-black text-slate-800 mb-3 tracking-tight italic leading-tight">{event.title}</h3>
-            
-            <div className="flex items-center gap-1.5 text-slate-400 text-[11px] font-bold mb-5 italic">
-              <Calendar size={13} className="text-slate-300" /> 
-              {event.event_date.replace('T', ' ').slice(0, 16)}
-            </div>
-
-            {/* 통계 섹션 (미신청자/확정자 표시 복구) */}
-            <div className="bg-slate-50 rounded-[24px] p-4 mb-5 space-y-3">
-              <div className="flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <div className="w-1 h-3 bg-slate-900 rounded-full"></div>
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">Confirmed</span>
-                </div>
-                <p className="text-sm font-black text-slate-900">{event.confirmedCount} <span className="text-[11px] text-slate-300">/ {event.max_people}명</span></p>
-              </div>
-              
-              <div className="flex justify-between items-center border-t border-slate-200/50 pt-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-1 h-3 bg-orange-500 rounded-full"></div>
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">Waiting List</span>
-                </div>
-                <p className="text-sm font-black text-orange-500">{event.waitingCount}명 대기중</p>
-              </div>
-            </div>
-
-            {/* 미입금자 경고 표시 복구 */}
-            {event.pendingPaymentCount > 0 && (
-              <div className="flex items-center justify-between px-4 py-3 bg-red-50 rounded-2xl mb-4 border border-red-100">
-                <span className="text-[10px] font-black text-red-500 uppercase tracking-tighter flex items-center gap-1.5">
-                  <AlertCircle size={14} /> 입금 확인 필요
+        {filteredEvents.length > 0 ? (
+          filteredEvents.map((event) => (
+            <div key={event.event_id} className="bg-white rounded-[32px] p-6 border border-slate-100 shadow-sm active:bg-slate-50 transition-colors">
+              <div className="flex justify-between items-center mb-4">
+                <span className={`px-3 py-0.5 rounded-full text-[9px] font-black tracking-tighter ${event.event_type === 'WED' ? 'bg-indigo-600 text-white' : 'bg-amber-500 text-white'}`}>
+                  {event.event_type === 'WED' ? 'SU-BAL-I' : 'RANKING'}
                 </span>
-                <span className="text-[11px] font-black text-red-600">{event.pendingPaymentCount}명 미입금</span>
+                <div className="flex gap-2">
+                  <button onClick={() => { 
+                    setEditingEvent(event); 
+                    setFormData({ ...event, event_date: formatForInput(event.event_date) }); 
+                    setIsModalOpen(true); 
+                  }} className="p-2 text-slate-300 hover:text-slate-900"><Pencil size={16} /></button>
+                  <button onClick={() => handleDelete(event.event_id)} className="p-2 text-slate-300 hover:text-red-500"><Trash2 size={16} /></button>
+                </div>
               </div>
-            )}
 
-            <Link href={`/admin/events/${event.event_id}`} className="w-full flex items-center justify-center gap-2 py-4 bg-slate-900 text-white rounded-[20px] font-black text-[11px] uppercase tracking-wider shadow-lg active:scale-95 transition-all">
-              신청자 명단 관리 <ChevronRight size={14} />
-            </Link>
+              <h3 className="text-xl font-black text-slate-800 mb-3 tracking-tight italic leading-tight">{event.title}</h3>
+              
+              <div className="flex items-center gap-1.5 text-slate-400 text-[11px] font-bold mb-5 italic">
+                <Calendar size={13} className="text-slate-300" /> 
+                {event.event_date?.replace('T', ' ').slice(0, 16)}
+              </div>
+
+              {/* 통계 섹션 */}
+              <div className="bg-slate-50 rounded-[24px] p-4 mb-5 space-y-3">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-2">
+                    <div className="w-1 h-3 bg-slate-900 rounded-full"></div>
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">Confirmed</span>
+                  </div>
+                  <p className="text-sm font-black text-slate-900">{event.confirmedCount} <span className="text-[11px] text-slate-300">/ {event.max_people}명</span></p>
+                </div>
+                
+                <div className="flex justify-between items-center border-t border-slate-200/50 pt-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-1 h-3 bg-orange-500 rounded-full"></div>
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">Waiting List</span>
+                  </div>
+                  <p className="text-sm font-black text-orange-500">{event.waitingCount}명 대기중</p>
+                </div>
+              </div>
+
+              {/* 미입금자 경고 */}
+              {event.pendingPaymentCount > 0 && (
+                <div className="flex items-center justify-between px-4 py-3 bg-red-50 rounded-2xl mb-4 border border-red-100">
+                  <span className="text-[10px] font-black text-red-500 uppercase tracking-tighter flex items-center gap-1.5">
+                    <AlertCircle size={14} /> 입금 확인 필요
+                  </span>
+                  <span className="text-[11px] font-black text-red-600">{event.pendingPaymentCount}명 미입금</span>
+                </div>
+              )}
+
+              <Link href={`/admin/events/${event.event_id}`} className="w-full flex items-center justify-center gap-2 py-4 bg-slate-900 text-white rounded-[20px] font-black text-[11px] uppercase tracking-wider shadow-lg active:scale-95 transition-all">
+                신청자 명단 관리 <ChevronRight size={14} />
+              </Link>
+            </div>
+          ))
+        ) : (
+          <div className="py-20 text-center border-2 border-dashed border-slate-100 rounded-[40px]">
+            <p className="text-slate-300 font-black italic uppercase text-[10px] tracking-widest">
+              No {activeType} Events Found
+            </p>
           </div>
-        ))}
+        )}
       </div>
 
       {/* --- [팝업: 원본 코드와 100% 동일하게 복구] --- */}
