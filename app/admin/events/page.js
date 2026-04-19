@@ -165,14 +165,31 @@ export default function EventManagementPage() {
 };
 
   const handleDelete = async (id) => {
-    if (!confirm('정말로 삭제하시겠습니까?')) return;
+    if (!confirm('이벤트를 삭제하시겠습니까? 관련 신청 데이터(Entry)도 모두 삭제됩니다.')) return;
+    
     try {
       const eventId = Number(id);
-      // ... [기존 삭제 로직 유지] ...
-      await supabase.from('event').delete().eq('event_id', eventId);
-      showToast('삭제되었습니다.');
-      refreshEvents(); // 8. 삭제 후 목록 새로고침
+      
+      // 1. 해당 이벤트를 참조하고 있는 모든 신청 데이터(entry)를 먼저 삭제
+      const { error: entryDeleteError } = await supabase
+        .from('entry')
+        .delete()
+        .eq('event_id', eventId);
+      
+      if (entryDeleteError) throw entryDeleteError;
+
+      // 2. 부모 데이터인 이벤트(event) 삭제
+      const { error: eventDeleteError } = await supabase
+        .from('event')
+        .delete()
+        .eq('event_id', eventId);
+      
+      if (eventDeleteError) throw eventDeleteError;
+
+      showToast('이벤트와 관련 데이터가 모두 삭제되었습니다.');
+      refreshEvents(); 
     } catch (error) {
+      console.error('삭제 중 오류:', error);
       showToast('삭제 실패: ' + error.message, "error");
     }
   };

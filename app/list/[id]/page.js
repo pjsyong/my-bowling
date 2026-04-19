@@ -198,11 +198,12 @@ export default function EventDetailPage({ params }) {
             
             if (isWaiting) {
               cardStyle = "bg-slate-50/40 border-dashed border-slate-200 opacity-75";
+            } else if (isGuest && isPro) {
+              // 게스트이면서 프로인 경우 (혼합 스타일 혹은 하나 선택)
+              cardStyle = "bg-indigo-50/50 border-indigo-100 shadow-sm";
             } else if (isGuest) {
-              // 게스트 우선 적용
               cardStyle = "bg-emerald-50/50 border-emerald-100 shadow-sm";
             } else if (isPro) {
-              // 프로 적용
               cardStyle = "bg-blue-50/50 border-blue-100 shadow-sm";
             }
 
@@ -223,23 +224,25 @@ export default function EventDetailPage({ params }) {
                       </p>
                       
                       {/* 배지 표시 로직 */}
-                      {isPro && !isGuest && (
-                        <span className="flex items-center gap-0.5 bg-slate-900 text-white text-[7px] px-1.5 py-0.5 rounded font-black italic">
-                          <ShieldCheck size={8} className="text-blue-400" /> PRO
-                        </span>
-                      )}
+                      <div className="flex gap-1">
+                        {isPro && (
+                          <span className="flex items-center gap-0.5 bg-slate-900 text-white text-[7px] px-1.5 py-0.5 rounded font-black italic">
+                            <ShieldCheck size={8} className="text-blue-400" /> PRO
+                          </span>
+                        )}
 
-                      {isGuest && (
-                        <span className="flex items-center gap-0.5 bg-emerald-600 text-white text-[7px] px-1.5 py-0.5 rounded font-black italic">
-                          GUEST
-                        </span>
-                      )}
+                        {isGuest && (
+                          <span className="flex items-center gap-0.5 bg-emerald-600 text-white text-[7px] px-1.5 py-0.5 rounded font-black italic">
+                            GUEST
+                          </span>
+                        )}
 
-                      {isWaiting && (
-                        <span className="flex items-center gap-1 text-[8px] font-black text-orange-600 bg-orange-100/50 px-2 py-0.5 rounded-full uppercase tracking-tighter">
-                          <Clock size={8} /> Waiting
-                        </span>
-                      )}
+                        {isWaiting && (
+                          <span className="flex items-center gap-1 text-[8px] font-black text-orange-600 bg-orange-100/50 px-2 py-0.5 rounded-full uppercase tracking-tighter">
+                            <Clock size={8} /> Waiting
+                          </span>
+                        )}
+                      </div>
                     </div>
                     
                     <div className="flex gap-1">
