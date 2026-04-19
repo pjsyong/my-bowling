@@ -69,7 +69,7 @@ export default function DepositStatusPage() {
                 </div>
                 <div className="flex justify-between items-center bg-white/5 p-3 rounded-2xl">
                   <span className="text-sm font-bold text-slate-300">이형렬 프로</span>
-                  <a href="tel:010-0000-0000" className="text-sm font-black text-white hover:text-blue-400">010-0000-0000</a>
+                  <a href="tel:010-5170-5870" className="text-sm font-black text-white hover:text-blue-400">010-5170-5870</a>
                 </div>
               </div>
             </div>
