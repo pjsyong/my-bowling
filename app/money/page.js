@@ -65,7 +65,7 @@ export default function DepositStatusPage() {
               <div className="flex flex-col gap-2">
                 <div className="flex justify-between items-center bg-white/5 p-3 rounded-2xl">
                   <span className="text-sm font-bold text-slate-300">김민형 프로</span>
-                  <a href="tel:010-0000-0000" className="text-sm font-black text-white hover:text-blue-400">010-0000-0000</a>
+                  <a href="tel:010-4810-5978" className="text-sm font-black text-white hover:text-blue-400">010-4810-5978</a>
                 </div>
                 <div className="flex justify-between items-center bg-white/5 p-3 rounded-2xl">
                   <span className="text-sm font-bold text-slate-300">이형렬 프로</span>
@@ -149,7 +149,6 @@ export default function DepositStatusPage() {
             )}
           </div>
         </div>
-
         <p className="text-center text-[11px] text-slate-300 font-bold px-4 leading-relaxed">
           관리자가 실시간으로 입금 내역을 대조하고 있습니다.<br/>
           입금 완료 후 리스트에서 사라지면 처리가 완료된 것입니다.
