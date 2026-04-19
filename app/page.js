@@ -136,23 +136,29 @@ export default function IntegratedRecordPage() {
         </div>
         <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar snap-x">
           {[1, 2, 3, 4, 5].map((num) => {
+            // 0점인 유저는 제외하고 점수가 높은 순으로 정렬
             const top3 = [...rankings]
               .map(r => ({ name: r.user?.name, score: r.scores?.[num - 1] || 0 }))
+              .filter(p => p.score > 0) // 0점 제외
               .sort((a, b) => b.score - a.score)
               .slice(0, 3);
+
+            // 해당 게임에 0점 초과인 유저가 한 명도 없으면 아예 카드를 렌더링하지 않거나 메시지 표시
+            if (top3.length === 0) return null;
+
             return (
-              <div key={num} className="min-w-[130px] bg-white border border-slate-100 rounded-[24px] p-4 shadow-sm snap-start">
-                <p className="text-[10px] font-black text-indigo-500 mb-3">GAME {num}</p>
-                <div className="space-y-2">
+              <div key={num} className="min-w-[140px] bg-white border border-slate-100 rounded-[28px] p-4 shadow-sm snap-start border-b-4 border-b-indigo-500">
+                <p className="text-[10px] font-black text-indigo-500 mb-3 tracking-tighter">GAME {num}</p>
+                <div className="space-y-2.5">
                   {top3.map((p, i) => (
                     <div key={i} className="flex justify-between items-center">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px]">{i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉'}</span>
-                        <span className={`text-xs font-bold ${i === 0 ? 'text-slate-900' : 'text-slate-500'}`}>
-                          {p.name || '-'}
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-xs shrink-0">{i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉'}</span>
+                        <span className={`text-[11px] font-bold truncate ${i === 0 ? 'text-slate-900' : 'text-slate-500'}`}>
+                          {p.name}
                         </span>
                       </div>
-                      <span className={`text-xs font-black ${i === 0 ? 'text-indigo-600' : 'text-slate-400'}`}>
+                      <span className={`text-xs font-black shrink-0 ${i === 0 ? 'text-indigo-600' : 'text-slate-400'}`}>
                         {p.score}
                       </span>
                     </div>
@@ -180,42 +186,60 @@ export default function IntegratedRecordPage() {
           </motion.div>
         ) : activeTab === 'ranking' ? (
           <motion.div key="ranking" initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }} className="space-y-4">
-            {rankings.map((p, i) => (
-              <div key={i} className="bg-white border border-slate-50 rounded-[32px] p-5 shadow-sm hover:border-indigo-100 transition-all">
-                <div className="flex justify-between items-center mb-4">
-                  <div className="flex items-center gap-4">
-                    <span className={`w-10 h-10 rounded-full flex items-center justify-center font-black ${i < 3 ? 'bg-amber-100 text-amber-600' : 'bg-slate-50 text-slate-400'}`}>
-                      {i + 1}
-                    </span>
-                    <div>
-                      <div className="flex items-center gap-1.5 mb-0.5">
-                        <h4 className="font-bold text-slate-900 text-base">{p.user?.name}</h4>
-                        {/* 배지 표시 부분 */}
-                        <div className="flex gap-1">
-                          {p.user?.type_pro === 1 && (
-                            <span className="bg-indigo-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded-md">PRO</span>
-                          )}
-                          {p.user?.official === false && (
-                            <span className="bg-green-200 text-slate-600 text-[9px] font-black px-1.5 py-0.5 rounded-md">GUEST</span>
-                          )}
+            {rankings.map((p, i) => {
+              // 순위에 따른 스타일 정의
+              const getRankStyle = (index) => {
+                if (index === 0) return { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-600', badge: '🥇' };
+                if (index === 1) return { bg: 'bg-slate-50', border: 'border-slate-200', text: 'text-slate-500', badge: '🥈' };
+                if (index === 2) return { bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-700', badge: '🥉' };
+                return { bg: 'bg-slate-50', border: 'border-slate-50', text: 'text-slate-400', badge: index + 1 };
+              };
+
+              const style = getRankStyle(i);
+
+              return (
+                <div key={i} className={`bg-white border ${i < 3 ? style.border : 'border-slate-50'} rounded-[32px] p-5 shadow-sm transition-all ${i === 0 ? 'ring-2 ring-amber-100' : ''}`}>
+                  <div className="flex justify-between items-center mb-4">
+                    <div className="flex items-center gap-4">
+                      <span className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-sm ${style.bg} ${style.text}`}>
+                        {style.badge}
+                      </span>
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <h4 className={`font-black text-base ${i === 0 ? 'text-slate-900' : 'text-slate-700'}`}>{p.user?.name}</h4>
+                          <div className="flex gap-1">
+                            {p.user?.type_pro === 1 && (
+                              <span className="bg-indigo-600 text-white text-[8px] font-black px-1.5 py-0.5 rounded-md italic">PRO</span>
+                            )}
+                            {p.user?.official === false && (
+                              <span className="bg-emerald-100 text-emerald-700 text-[8px] font-black px-1.5 py-0.5 rounded-md">GUEST</span>
+                            )}
+                          </div>
                         </div>
+                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-tight">Avg. {p.avg} / Total {p.total}</p>
                       </div>
-                      <p className="text-[11px] font-bold text-slate-400 uppercase tracking-tight">Avg. {p.avg} / Total {p.total}</p>
+                    </div>
+                    <div className="text-right">
+                      <div className={`text-2xl font-black leading-none ${i === 0 ? 'text-amber-500' : 'text-slate-900'}`}>
+                        {p.total}
+                      </div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-2xl font-black text-slate-900 leading-none">{p.total}</div>
+                  
+                  {/* 점수 박스 영역 */}
+                  <div className="grid grid-cols-5 gap-1.5 pt-4 border-t border-slate-50">
+                    {p.scores.map((score, idx) => (
+                      <div key={idx} className={`text-center py-2.5 rounded-xl text-xs font-black transition-colors ${
+                        score >= 200 ? 'bg-rose-50 text-rose-500 ring-1 ring-rose-100' : 
+                        score === 0 ? 'bg-slate-50 text-slate-200' : 'bg-slate-50 text-slate-600'
+                      }`}>
+                        {score || '-'}
+                      </div>
+                    ))}
                   </div>
                 </div>
-                <div className="grid grid-cols-5 gap-1.5 pt-4 border-t border-slate-50">
-                  {p.scores.map((score, idx) => (
-                    <div key={idx} className={`text-center py-2 rounded-xl text-xs font-black ${score >= 200 ? 'bg-red-50 text-red-500' : 'bg-slate-50 text-slate-600'}`}>
-                      {score || '-'}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </motion.div>
         ) : (
           <motion.div key="prize" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}>
@@ -248,7 +272,7 @@ export default function IntegratedRecordPage() {
                         <span className="font-black text-base">{(selectedEvent?.event_pay_person * confirmedCount).toLocaleString()}원</span>
                       </div>
                       <div className="flex justify-between items-center pt-1">
-                        <span className="text-xs font-medium opacity-80">잔여 상금 (개인사이드)</span>
+                        <span className="text-xs font-medium opacity-80">잔여 상금</span>
                         <span className="font-black text-base text-amber-300">{totalRemainder.toLocaleString()}원</span>
                       </div>
                     </div>

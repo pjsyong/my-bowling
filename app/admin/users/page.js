@@ -9,7 +9,7 @@ import Link from 'next/link';
 
 export default function UserManagementPage() {
   const router = useRouter();
-  const queryClient = useQueryClient(); // 3. 캐시 갱신용
+  const queryClient = useQueryClient();
 
   const [filterStatus, setFilterStatus] = useState('전체');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -19,7 +19,6 @@ export default function UserManagementPage() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
 
-  // 4. React Query로 유저 목록 호출
   const { data: users = [], isLoading: loading } = useQuery({
     queryKey: ['admin-users'],
     queryFn: async () => {
@@ -31,15 +30,13 @@ export default function UserManagementPage() {
       if (error) throw error;
       return data || [];
     },
-    staleTime: 0, // 유저 정보 변경은 즉각 반영되어야 하므로 0초!
+    staleTime: 0,
   });
 
-  // 5. 데이터 갱신 함수
   const refreshUsers = () => {
     queryClient.invalidateQueries({ queryKey: ['admin-users'] });
   };
 
-  // 6. 권한 체크 (useEffect 최소화)
   useEffect(() => {
     const checkAuth = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -51,9 +48,6 @@ export default function UserManagementPage() {
     checkAuth();
   }, [router]);
 
-  
-
-  // 필터링 로직 (기존 유지)
   const filteredUsers = users.filter(user => {
     if (filterStatus === '전체') return true;
     if (filterStatus === '일반') return user.official === true;
@@ -69,7 +63,6 @@ export default function UserManagementPage() {
     const trimmedName = formData.name.trim();
 
     try {
-      // 중복 체크 로직 (기존 유지)
       const { data: existingUsers } = await supabase.from('user').select('user_id, name').eq('current_id', trimmedId).limit(1);
       const existingUser = existingUsers?.[0];
 
@@ -92,11 +85,19 @@ export default function UserManagementPage() {
 
       setIsModalOpen(false);
       setEditingUser(null);
-      refreshUsers(); // 7. 등록/수정 후 즉시 캐시 갱신
+      refreshUsers();
     } catch (error) {
       alert('동작 실패: ' + error.message);
     }
   };
+
+  // --- 추가된 함수 시작 ---
+  const handleDeleteClick = (user) => {
+    setDeleteTarget(user);
+    setDeleteConfirmText('');
+    setIsDeleteModalOpen(true);
+  };
+  // --- 추가된 함수 끝 ---
 
   const confirmDelete = async () => {
     if (deleteConfirmText !== deleteTarget.name) {
@@ -108,7 +109,7 @@ export default function UserManagementPage() {
       await supabase.from('user').delete().eq('user_id', deleteTarget.user_id);
       setIsDeleteModalOpen(false);
       setDeleteTarget(null);
-      refreshUsers(); // 8. 삭제 후 즉시 캐시 갱신
+      refreshUsers();
     } catch (error) {
       alert('삭제 실패: ' + error.message);
     }
@@ -118,7 +119,7 @@ export default function UserManagementPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 pb-24 font-sans">
-      {/* Header */}
+      {/* Header (기존과 동일) */}
       <div className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-100 px-4 pt-4 pb-2">
         <div className="max-w-xl mx-auto">
           <div className="flex items-center justify-between mb-4">
@@ -137,7 +138,6 @@ export default function UserManagementPage() {
             </button>
           </div>
 
-          {/* Filter Tabs */}
           <div className="flex gap-2 pb-2 overflow-x-auto no-scrollbar">
             {['전체', '일반', '프로', '게스트'].map((status) => (
               <button
@@ -206,30 +206,27 @@ export default function UserManagementPage() {
             </div>
           );
         })}
-
         {filteredUsers.length === 0 && (
           <div className="text-center py-20 text-slate-300 font-bold">해당하는 회원이 없습니다.</div>
         )}
       </div>
 
-      {/* Modal - UI 동일하게 유지 */}
+      {/* 모달 부분 생략 (동일함) */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-end sm:items-center justify-center z-50 p-0 sm:p-6">
+          {/* ... Modal UI ... */}
           <div className="bg-white w-full max-w-md rounded-t-[32px] sm:rounded-[40px] p-8 shadow-2xl animate-in slide-in-from-bottom duration-300">
             <div className="w-12 h-1.5 bg-slate-100 rounded-full mx-auto mb-6 sm:hidden" />
             <h2 className="text-xl font-black text-slate-900 mb-6">{editingUser ? '정보 수정' : '신규 회원 등록'}</h2>
-            
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Name</label>
                 <input required value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full px-5 py-4 bg-slate-50 rounded-2xl border-none focus:ring-2 focus:ring-slate-200 outline-none font-bold" />
               </div>
-              
               <div className="space-y-1.5">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Identification ID</label>
                 <input required value={formData.current_id} onChange={(e) => setFormData({...formData, current_id: e.target.value})} className="w-full px-5 py-4 bg-slate-50 rounded-2xl border-none focus:ring-2 focus:ring-slate-200 outline-none font-bold" />
               </div>
-              
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Type</label>
@@ -246,7 +243,6 @@ export default function UserManagementPage() {
                   </div>
                 </div>
               </div>
-
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-4 bg-slate-100 text-slate-500 rounded-2xl font-black">취소</button>
                 <button className="flex-[2] py-4 bg-slate-900 text-white rounded-2xl font-black shadow-lg">저장하기</button>
@@ -255,20 +251,15 @@ export default function UserManagementPage() {
           </div>
         </div>
       )}
-      {/* 삭제 확인 커스텀 모달 */}
+
+      {/* 삭제 확인 모달 (기존과 동일) */}
       {isDeleteModalOpen && deleteTarget && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[60] p-0 sm:p-6">
           <div className="bg-white w-full max-w-md rounded-t-[32px] sm:rounded-[40px] p-8 shadow-2xl animate-in slide-in-from-bottom duration-300">
             <div className="flex flex-col items-center text-center">
-              <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center mb-4">
-                <Trash2 size={32} />
-              </div>
+              <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center mb-4"><Trash2 size={32} /></div>
               <h2 className="text-xl font-black text-slate-900 mb-2">회원 정보 삭제</h2>
-              <p className="text-sm text-slate-500 font-bold mb-6">
-                이 작업은 경기 기록을 포함한 모든 데이터를<br/>영구적으로 삭제하며 되돌릴 수 없습니다.
-              </p>
-
-              {/* 삭제 대상 정보 박스 - 여기서 name과 current_id가 노출됩니다 */}
+              <p className="text-sm text-slate-500 font-bold mb-6">이 작업은 경기 기록을 포함한 모든 데이터를<br/>영구적으로 삭제하며 되돌릴 수 없습니다.</p>
               <div className="w-full bg-slate-50 rounded-2xl p-5 mb-6 text-left border border-slate-100">
                 <div className="flex justify-between items-center">
                   <div>
@@ -281,39 +272,13 @@ export default function UserManagementPage() {
                   </div>
                 </div>
               </div>
-
-              {/* 이름 입력 확인 */}
               <div className="w-full space-y-3">
-                <p className="text-[11px] font-black text-slate-400 uppercase tracking-tighter text-left ml-1">
-                  확인을 위해 삭제 대상의 이름 [<span className="text-rose-500">{deleteTarget.name}</span>]을 입력하세요
-                </p>
-                <input 
-                  type="text"
-                  value={deleteConfirmText}
-                  onChange={(e) => setDeleteConfirmText(e.target.value)}
-                  className="w-full px-5 py-4 bg-white border-2 border-slate-100 focus:border-rose-500 rounded-2xl outline-none text-center font-black text-slate-800 transition-all"
-                  placeholder={deleteTarget.name}
-                />
+                <p className="text-[11px] font-black text-slate-400 uppercase tracking-tighter text-left ml-1">확인을 위해 삭제 대상의 이름 [<span className="text-rose-500">{deleteTarget.name}</span>]을 입력하세요</p>
+                <input type="text" value={deleteConfirmText} onChange={(e) => setDeleteConfirmText(e.target.value)} className="w-full px-5 py-4 bg-white border-2 border-slate-100 focus:border-rose-500 rounded-2xl outline-none text-center font-black text-slate-800 transition-all" placeholder={deleteTarget.name} />
               </div>
-
               <div className="flex gap-3 w-full mt-8">
-                <button 
-                  onClick={() => setIsDeleteModalOpen(false)}
-                  className="flex-1 py-4 bg-slate-100 text-slate-500 rounded-2xl font-black"
-                >
-                  취소
-                </button>
-                <button 
-                  onClick={confirmDelete}
-                  disabled={deleteConfirmText !== deleteTarget.name}
-                  className={`flex-[2] py-4 rounded-2xl font-black shadow-lg transition-all ${
-                    deleteConfirmText === deleteTarget.name 
-                    ? 'bg-rose-500 text-white shadow-rose-200 active:scale-95' 
-                    : 'bg-slate-200 text-white cursor-not-allowed'
-                  }`}
-                >
-                  영구 삭제
-                </button>
+                <button onClick={() => setIsDeleteModalOpen(false)} className="flex-1 py-4 bg-slate-100 text-slate-500 rounded-2xl font-black">취소</button>
+                <button onClick={confirmDelete} disabled={deleteConfirmText !== deleteTarget.name} className={`flex-[2] py-4 rounded-2xl font-black shadow-lg transition-all ${deleteConfirmText === deleteTarget.name ? 'bg-rose-500 text-white shadow-rose-200 active:scale-95' : 'bg-slate-200 text-white cursor-not-allowed'}`}>영구 삭제</button>
               </div>
             </div>
           </div>
