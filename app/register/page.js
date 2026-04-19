@@ -100,7 +100,7 @@ export default function RegisterPage() {
         </div>
         <h1 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight">신규 회원 등록</h1>
         <p className="text-sm md:text-base text-slate-400 font-medium mt-2 md:mt-3 leading-relaxed">
-          정보를 입력해 주시면 운영진 확인 후 <br className="md:hidden" /> 정식 멤버로 등록됩니다.
+          정보를 입력해주시면 회원 가입이 완료됩니다. <br className="md:hidden" /> <br/>무분별한 가입은 자제 부탁드립니다.
         </p>
       </header>
 
