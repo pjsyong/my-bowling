@@ -87,7 +87,7 @@ export default function EntryManagementPage({ params }) {
         {
           title: '미입금자 명단',
           description: nameList, // 이름만 노출하여 카드 사이즈 최적화
-          imageUrl: 'https://cdn-icons-png.flaticon.com/512/3062/3062518.png',
+          imageUrl: 'https://cdn-icons-png.flaticon.com/512/694/694642.png',
           link: { mobileWebUrl: userPageUrl, webUrl: userPageUrl },
         }
       ],
