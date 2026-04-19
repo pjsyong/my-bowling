@@ -64,7 +64,7 @@ export default function EntryManagementPage({ params }) {
 
   // 카카오톡 공유 함수
   const shareToKakao = () => {
-    const unpaidEntries = entries.filter(e => !e.payment_status);
+    const unpaidEntries = entries.filter(e => e.result === true && !e.payment_status);
     if (unpaidEntries.length === 0) return showToast('모두 입금 완료되었습니다! 👏');
 
     // 금액 제외, 이름만 추출하여 나열
