@@ -93,7 +93,7 @@ export default function EntryManagementPage({ params }) {
       ],
       buttons: [
         {
-          title: '내 신청내역 확인하기',
+          title: '입금 현황 확인하기',
           link: { 
             mobileWebUrl: userPageUrl, // 개별 링크 설정 가능
             webUrl: userPageUrl 
