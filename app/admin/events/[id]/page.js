@@ -64,38 +64,41 @@ export default function EntryManagementPage({ params }) {
 
   // 카카오톡 공유 함수
   const shareToKakao = () => {
-    if (!window.Kakao) return;
-
     const unpaidEntries = entries.filter(e => !e.payment_status);
+    if (unpaidEntries.length === 0) return showToast('모두 입금 완료되었습니다! 👏');
 
-    if (unpaidEntries.length === 0) {
-      showToast('미입금자가 없습니다! 👏');
-      return;
-    }
+    // 금액 제외, 이름만 추출하여 나열
+    const nameList = unpaidEntries.map(e => e.user?.name).join(', ');
 
-    const unpaidListText = unpaidEntries
-      .map(e => `${e.user?.name}(${(e.payment_amount || 0).toLocaleString()}원)`)
-      .join(', ');
+    // 사용자용 상세 페이지 링크 (필요 시 수정 가능)
+    const userPageUrl = "https://my-home-t83e.vercel.app/money"; 
 
     window.Kakao.Share.sendDefault({
-      objectType: 'feed',
-      content: {
-        title: `🎳 ${eventInfo?.title} 입금 안내`,
-        description: `미입금 인원: ${unpaidEntries.length}명\n대상자: ${unpaidListText}`,
-        imageUrl: 'https://your-domain.com/bowling-logo.png', // 동호회 로고 URL이 있다면 교체
-        link: {
-          mobileWebUrl: window.location.href,
-          webUrl: window.location.href,
+      objectType: 'list',
+      headerTitle: `🎳 ${eventInfo?.title} 입금 안내`,
+      headerLink: { mobileWebUrl: userPageUrl, webUrl: userPageUrl },
+      contents: [
+        {
+          title: '미입금 인원 현황',
+          description: `현재 ${unpaidEntries.length}명이 미입금 상태입니다.`,
+          imageUrl: 'https://cdn-icons-png.flaticon.com/512/3390/3390440.png',
+          link: { mobileWebUrl: userPageUrl, webUrl: userPageUrl },
         },
-      },
+        {
+          title: '미입금자 명단',
+          description: nameList, // 이름만 노출하여 카드 사이즈 최적화
+          imageUrl: 'https://cdn-icons-png.flaticon.com/512/3062/3062518.png',
+          link: { mobileWebUrl: userPageUrl, webUrl: userPageUrl },
+        }
+      ],
       buttons: [
         {
-          title: '내역 확인하기',
-          link: {
-            mobileWebUrl: window.location.href.replace('/admin', ''), // 사용자 페이지로 유도
-            webUrl: window.location.href.replace('/admin', ''),
+          title: '내 신청내역 확인하기',
+          link: { 
+            mobileWebUrl: userPageUrl, // 개별 링크 설정 가능
+            webUrl: userPageUrl 
           },
-        },
+        }
       ],
     });
   };
