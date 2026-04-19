@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trophy, List, User, Menu, X, UserPlus } from 'lucide-react';
+import { Trophy, List, User, Menu, X, UserPlus, Banknote } from 'lucide-react';
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -24,6 +24,7 @@ export default function Sidebar() {
       title: 'apply',
       items: [
         { name: '게임 신청', icon: <UserPlus size={20} />, path: '/invite' },
+        { name: '입금 상태', icon: <Banknote size={20} />, path: '/money' },
       ]
     },
     {

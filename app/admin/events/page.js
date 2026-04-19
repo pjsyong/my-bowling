@@ -13,7 +13,7 @@ import { useRouter } from 'next/navigation';
 
 export default function EventManagementPage() {
   const router = useRouter();
-  const queryClient = useQueryClient(); // 3. 캐시 갱신을 위한 선언
+  const queryClient = useQueryClient(); 
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
@@ -27,6 +27,7 @@ export default function EventManagementPage() {
     event_date: '',
     event_pay_person: 0,
     event_pay_team: 0,
+    event_pay: 0, // 기본 게임 비용 추가
     max_people: 20,
     progress: true,
     end: false,
@@ -36,7 +37,6 @@ export default function EventManagementPage() {
     frame: 4
   });
 
-  // --- 추가된 부분: 날짜 포맷 함수 (에러 방지용) ---
   const formatDateTimeLocal = (date) => {
     const d = new Date(date);
     const offset = d.getTimezoneOffset() * 60000;
@@ -49,11 +49,9 @@ export default function EventManagementPage() {
     return dateString.replace(' ', 'T').slice(0, 16);
   };
 
-  // 4. React Query로 이벤트 및 통계 데이터 통합 호출
   const { data: events = [], isLoading: loading } = useQuery({
     queryKey: ['admin-events'],
     queryFn: async () => {
-      // (1) 이벤트 목록 가져오기
       const { data: eventData, error: eventError } = await supabase
         .from('event')
         .select('*')
@@ -61,7 +59,6 @@ export default function EventManagementPage() {
       
       if (eventError) throw eventError;
 
-      // (2) 각 이벤트별 통계 합치기 (기존 fetchEvents 로직 유지)
       const eventsWithStats = await Promise.all((eventData || []).map(async (event) => {
         const { data: entries } = await supabase
           .from('entry')
@@ -81,12 +78,11 @@ export default function EventManagementPage() {
       }));
       return eventsWithStats;
     },
-    staleTime: 0, // 관리자 페이지이므로 1분간 캐시 유지
+    staleTime: 0, 
   });
 
   const filteredEvents = events.filter(event => event.event_type === activeType);
 
-  // 5. 인증 체크 (useEffect는 인증 전용으로만 사용)
   useEffect(() => {
     const checkAuth = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -98,7 +94,6 @@ export default function EventManagementPage() {
     checkAuth();
   }, [router]);
 
-  // 6. 데이터 변경(저장/삭제) 후 캐시 무효화 함수
   const refreshEvents = () => {
     queryClient.invalidateQueries({ queryKey: ['admin-events'] });
   };
@@ -111,58 +106,54 @@ export default function EventManagementPage() {
   };
 
   const handleSubmit = async (e) => {
-  e.preventDefault();
+    e.preventDefault();
 
-  // 1. 상금 배분율 합계 체크 (기존 로직)
-  const totalRatio = Number(formData.ratio_1 || 0) + Number(formData.ratio_2 || 0) + Number(formData.ratio_3 || 0);
-  if (totalRatio !== 100) {
-    showToast('상금 배분율의 합계가 100%여야 합니다.', 'error');
-    return;
-  }
-
-  // 2. submitData 정의 (에러 해결 핵심!)
-  // input의 value들은 기본적으로 문자열이므로, 숫자가 필요한 필드는 Number()로 변환해주는 것이 좋습니다.
-  const submitData = {
-    title: formData.title,
-    event_type: formData.event_type,
-    event_date: formData.event_date,
-    event_pay_person: Number(formData.event_pay_person),
-    event_pay_team: Number(formData.event_pay_team),
-    max_people: Number(formData.max_people),
-    progress: formData.progress,
-    end: formData.end,
-    ratio_1: Number(formData.ratio_1),
-    ratio_2: Number(formData.ratio_2),
-    ratio_3: Number(formData.ratio_3),
-    frame: Number(formData.frame),
-  };
-
-  try {
-    if (editingEvent) {
-      // 수정 모드
-      const { error } = await supabase
-        .from('event')
-        .update(submitData)
-        .eq('event_id', editingEvent.event_id);
-      
-      if (error) throw error;
-    } else {
-      // 신규 등록 모드
-      const { error } = await supabase
-        .from('event')
-        .insert([submitData]);
-      
-      if (error) throw error;
+    const totalRatio = Number(formData.ratio_1 || 0) + Number(formData.ratio_2 || 0) + Number(formData.ratio_3 || 0);
+    if (totalRatio !== 100) {
+      showToast('상금 배분율의 합계가 100%여야 합니다.', 'error');
+      return;
     }
 
-    showToast(editingEvent ? '수정되었습니다.' : '등록되었습니다.');
-    setIsModalOpen(false);
-    refreshEvents(); // 목록 새로고침
-  } catch (error) {
-    console.error(error);
-    alert('오류 발생: ' + error.message);
-  }
-};
+    const submitData = {
+      title: formData.title,
+      event_type: formData.event_type,
+      event_date: formData.event_date,
+      event_pay_person: Number(formData.event_pay_person),
+      event_pay_team: Number(formData.event_pay_team),
+      event_pay: Number(formData.event_pay), // event_pay 컬럼 추가
+      max_people: Number(formData.max_people),
+      progress: formData.progress,
+      end: formData.end,
+      ratio_1: Number(formData.ratio_1),
+      ratio_2: Number(formData.ratio_2),
+      ratio_3: Number(formData.ratio_3),
+      frame: Number(formData.frame),
+    };
+
+    try {
+      if (editingEvent) {
+        const { error } = await supabase
+          .from('event')
+          .update(submitData)
+          .eq('event_id', editingEvent.event_id);
+        
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('event')
+          .insert([submitData]);
+        
+        if (error) throw error;
+      }
+
+      showToast(editingEvent ? '수정되었습니다.' : '등록되었습니다.');
+      setIsModalOpen(false);
+      refreshEvents(); 
+    } catch (error) {
+      console.error(error);
+      alert('오류 발생: ' + error.message);
+    }
+  };
 
   const handleDelete = async (id) => {
     if (!confirm('이벤트를 삭제하시겠습니까? 관련 신청 데이터(Entry)도 모두 삭제됩니다.')) return;
@@ -170,7 +161,6 @@ export default function EventManagementPage() {
     try {
       const eventId = Number(id);
       
-      // 1. 해당 이벤트를 참조하고 있는 모든 신청 데이터(entry)를 먼저 삭제
       const { error: entryDeleteError } = await supabase
         .from('entry')
         .delete()
@@ -178,7 +168,6 @@ export default function EventManagementPage() {
       
       if (entryDeleteError) throw entryDeleteError;
 
-      // 2. 부모 데이터인 이벤트(event) 삭제
       const { error: eventDeleteError } = await supabase
         .from('event')
         .delete()
@@ -221,7 +210,7 @@ export default function EventManagementPage() {
               setEditingEvent(null);
               setFormData({ 
                 title: '', event_type: 'WED', event_date: formatDateTimeLocal(new Date()),
-                event_pay_person: 0, event_pay_team: 0, max_people: 20, progress: true, end: false,
+                event_pay_person: 0, event_pay_team: 0, event_pay: 0, max_people: 20, progress: true, end: false,
                 ratio_1: 50, ratio_2: 30, ratio_3: 20, frame: 4
               });
               setIsModalOpen(true);
@@ -282,7 +271,6 @@ export default function EventManagementPage() {
                 {event.event_date?.replace('T', ' ').slice(0, 16)}
               </div>
 
-              {/* 통계 섹션 */}
               <div className="bg-slate-50 rounded-[24px] p-4 mb-5 space-y-3">
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-2">
@@ -301,7 +289,6 @@ export default function EventManagementPage() {
                 </div>
               </div>
 
-              {/* 미입금자 경고 */}
               {event.pendingPaymentCount > 0 && (
                 <div className="flex items-center justify-between px-4 py-3 bg-red-50 rounded-2xl mb-4 border border-red-100">
                   <span className="text-[10px] font-black text-red-500 uppercase tracking-tighter flex items-center gap-1.5">
@@ -325,7 +312,6 @@ export default function EventManagementPage() {
         )}
       </div>
 
-      {/* --- [팝업: 원본 코드와 100% 동일하게 복구] --- */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex flex-col justify-end z-[120]">
           <div className="bg-white w-full max-w-md mx-auto rounded-t-[40px] flex flex-col max-h-[92vh] overflow-hidden shadow-2xl">
@@ -374,6 +360,12 @@ export default function EventManagementPage() {
                       <input type="number" value={formData.event_pay_team} onChange={(e) => setFormData({...formData, event_pay_team: e.target.value})} className="w-full px-6 py-5 bg-slate-50 rounded-3xl border-none font-bold text-sm outline-none" />
                     </div>
                   </div>
+                </div>
+
+                {/* --- 새로 추가된 기본 게임 비용 항목 --- */}
+                <div className="space-y-4">
+                  <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest ml-1 block">기본 게임 비용</label>
+                  <input type="number" value={formData.event_pay} onChange={(e) => setFormData({...formData, event_pay: e.target.value})} className="w-full px-6 py-5 bg-slate-50 rounded-3xl border-none font-bold text-sm outline-none" placeholder="기본 게임 비용을 입력하세요" />
                 </div>
 
                 <div className="space-y-4">
