@@ -31,7 +31,7 @@ export default function Sidebar() {
       title: 'info',
       items: [
         { name: '개인 기록', icon: <User size={20} />, path: '/profile' },
-        { name: '회원 가입', icon: <UserPlus size={20} />, path: '/register' },
+        { name: '선수 등록', icon: <UserPlus size={20} />, path: '/register' },
       ]
     }
   ];
