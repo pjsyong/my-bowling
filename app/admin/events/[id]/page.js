@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { 
   Users, ArrowLeft, CheckCircle2, 
   Trash2, Banknote, UserCheck, Users2, Lock, ChevronRight,
-  Plus, Search, X, Check 
+  Plus, Search, X, Check, Share2 // Share2 아이콘 추가
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -23,6 +23,19 @@ export default function EntryManagementPage({ params }) {
   const [searchResults, setSearchResults] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
   const [addForm, setAddForm] = useState({ pay_person: false, pay_team: false });
+
+  // 카카오 SDK 초기화
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !window.Kakao?.isInitialized()) {
+      const script = document.createElement('script');
+      script.src = 'https://t1.kakaocdn.net/kakao_js_sdk/2.7.0/kakao.min.js';
+      script.async = true;
+      script.onload = () => {
+        window.Kakao.init('ccf6442364ce1904b9db1eee04ae35a6'); // 여기에 본인의 자바스크립트 키를 넣으세요
+      };
+      document.head.appendChild(script);
+    }
+  }, []);
 
   const { data: { eventInfo, entries } = { eventInfo: null, entries: [] }, isLoading: loading } = useQuery({
     queryKey: ['admin-entries', eventId],
@@ -49,31 +62,53 @@ export default function EntryManagementPage({ params }) {
     staleTime: 0,
   });
 
-  // --- 금액 합산 로직 ---
-  const confirmedEntries = entries.filter(e => e.result);
+  // 카카오톡 공유 함수
+  const shareToKakao = () => {
+    if (!window.Kakao) return;
 
-  // 1. 기본 게임 비용 합계 (확정 인원 대상)
-  const totalBasePay = confirmedEntries.length * (Number(eventInfo?.event_pay) || 0);
+    const unpaidEntries = entries.filter(e => !e.payment_status);
 
-  // 2. 개인전 사이드 합계 (확정 인원 중 개인전 체크자 대상)
-  const totalPersonPay = confirmedEntries.reduce((acc, e) => 
-    e.pay_person ? acc + (Number(eventInfo?.event_pay_person) || 0) : acc, 0);
+    if (unpaidEntries.length === 0) {
+      showToast('미입금자가 없습니다! 👏');
+      return;
+    }
 
-  // 3. 팀전 사이드 합계 (확정 인원 중 팀전 체크자 대상)
-  const totalTeamPay = confirmedEntries.reduce((acc, e) => 
-    e.pay_team ? acc + (Number(eventInfo?.event_pay_team) || 0) : acc, 0);
+    const unpaidListText = unpaidEntries
+      .map(e => `${e.user?.name}(${(e.payment_amount || 0).toLocaleString()}원)`)
+      .join(', ');
 
-  // 확정 총액 (위 3개 항목의 합)
-  const totalAmount = totalBasePay + totalPersonPay + totalTeamPay;
-
-  // 실 입금액 (입금 완료 상태인 사람들의 실제 payment_amount 합계)
-  const totalPaidAmount = entries.reduce((acc, entry) => {
-    return entry.payment_status ? acc + (Number(entry.payment_amount) || 0) : acc;
-  }, 0);
-  
-  const refreshData = () => {
-    queryClient.invalidateQueries({ queryKey: ['admin-entries', eventId] });
+    window.Kakao.Share.sendDefault({
+      objectType: 'feed',
+      content: {
+        title: `🎳 ${eventInfo?.title} 입금 안내`,
+        description: `미입금 인원: ${unpaidEntries.length}명\n대상자: ${unpaidListText}`,
+        imageUrl: 'https://your-domain.com/bowling-logo.png', // 동호회 로고 URL이 있다면 교체
+        link: {
+          mobileWebUrl: window.location.href,
+          webUrl: window.location.href,
+        },
+      },
+      buttons: [
+        {
+          title: '내역 확인하기',
+          link: {
+            mobileWebUrl: window.location.href.replace('/admin', ''), // 사용자 페이지로 유도
+            webUrl: window.location.href.replace('/admin', ''),
+          },
+        },
+      ],
+    });
   };
+
+  // --- 이하 기존 로직 동일 (생략) ---
+  const confirmedEntries = entries.filter(e => e.result);
+  const totalBasePay = confirmedEntries.length * (Number(eventInfo?.event_pay) || 0);
+  const totalPersonPay = confirmedEntries.reduce((acc, e) => e.pay_person ? acc + (Number(eventInfo?.event_pay_person) || 0) : acc, 0);
+  const totalTeamPay = confirmedEntries.reduce((acc, e) => e.pay_team ? acc + (Number(eventInfo?.event_pay_team) || 0) : acc, 0);
+  const totalAmount = totalBasePay + totalPersonPay + totalTeamPay;
+  const totalPaidAmount = entries.reduce((acc, entry) => entry.payment_status ? acc + (Number(entry.payment_amount) || 0) : acc, 0);
+  
+  const refreshData = () => queryClient.invalidateQueries({ queryKey: ['admin-entries', eventId] });
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -94,45 +129,24 @@ export default function EntryManagementPage({ params }) {
   const [isToggling, setIsToggling] = useState(null);
   const handleSidePayToggle = async (entry, field) => {
     if (entry.payment_status || isToggling === entry.entry_id) return;
-
     setIsToggling(entry.entry_id);
-
     const nextStatus = !entry[field];
     const finalPayPerson = field === 'pay_person' ? nextStatus : entry.pay_person;
     const finalPayTeam = field === 'pay_team' ? nextStatus : entry.pay_team;
-
     let newAmount = Number(eventInfo?.event_pay || 0);
     if (finalPayPerson) newAmount += Number(eventInfo?.event_pay_person || 0);
     if (finalPayTeam) newAmount += Number(eventInfo?.event_pay_team || 0);
-
     try {
-      const { error } = await supabase
-        .from('entry')
-        .update({ 
-          [field]: nextStatus, 
-          payment_amount: newAmount 
-        })
-        .eq('entry_id', entry.entry_id);
-
+      const { error } = await supabase.from('entry').update({ [field]: nextStatus, payment_amount: newAmount }).eq('entry_id', entry.entry_id);
       if (error) throw error;
-      
       showToast('금액이 갱신되었습니다.');
       await queryClient.invalidateQueries({ queryKey: ['admin-entries', eventId] });
-    } catch (e) { 
-      showToast('갱신 실패', 'error'); 
-    } finally {
-      setIsToggling(null);
-    }
+    } catch (e) { showToast('갱신 실패', 'error'); } finally { setIsToggling(null); }
   };
 
   const handleSearchUser = async () => {
     if (!searchName.trim()) return;
-    const { data, error } = await supabase
-      .from('user_public')
-      .select('user_id, name')
-      .ilike('name', `%${searchName}%`)
-      .limit(5);
-    
+    const { data, error } = await supabase.from('user_public').select('user_id, name').ilike('name', `%${searchName}%`).limit(5);
     if (error) showToast('유저 검색 실패', 'error');
     else setSearchResults(data || []);
   };
@@ -140,69 +154,45 @@ export default function EntryManagementPage({ params }) {
   const handleAddEntry = async () => {
     if (!selectedUser) return alert('회원을 선택해주세요.');
     if (entries.length >= 30) return alert('최대 인원 초과');
-
     const isAlreadyAdded = entries.some(entry => entry.user_id === selectedUser.user_id);
     if (isAlreadyAdded) return alert('이미 등록된 회원입니다.');
-
     let payment_amount = Number(eventInfo?.event_pay || 0);
     if (addForm.pay_person) payment_amount += Number(eventInfo.event_pay_person || 0);
     if (addForm.pay_team) payment_amount += Number(eventInfo.event_pay_team || 0);
-
     try {
       const { error } = await supabase.from('entry').insert({
-        event_id: eventId,
-        user_id: selectedUser.user_id,
-        pay_person: addForm.pay_person,
-        pay_team: addForm.pay_team,
-        payment_amount: payment_amount,
-        payment_status: false,
-        result: false
+        event_id: eventId, user_id: selectedUser.user_id, pay_person: addForm.pay_person,
+        pay_team: addForm.pay_team, payment_amount: payment_amount, payment_status: false, result: false
       });
-
       if (error) throw error;
       showToast('참가자가 추가되었습니다.');
       setIsAddModalOpen(false);
       resetAddForm();
       refreshData();
-    } catch (error) {
-      alert(error.message);
-    }
+    } catch (error) { alert(error.message); }
   };
 
   const resetAddForm = () => {
-    setSearchName('');
-    setSearchResults([]);
-    setSelectedUser(null);
+    setSearchName(''); setSearchResults([]); setSelectedUser(null);
     setAddForm({ pay_person: false, pay_team: false });
   };
 
   const handleStatusToggle = async (entry, field) => {
     const maxCount = Number(eventInfo?.max_people || 0);
     const confirmedCount = entries.filter(e => e.result === true).length;
-    const isBecomingConfirmed = (field === 'result' && !entry.result) || 
-                                 (field === 'payment_status' && !entry.payment_status && !entry.result);
-
-    if (isBecomingConfirmed && maxCount > 0 && confirmedCount >= maxCount) {
-      alert(`정원 초과! (최대 ${maxCount}명)`);
-      return; 
-    }
-
+    const isBecomingConfirmed = (field === 'result' && !entry.result) || (field === 'payment_status' && !entry.payment_status && !entry.result);
+    if (isBecomingConfirmed && maxCount > 0 && confirmedCount >= maxCount) { alert(`정원 초과! (최대 ${maxCount}명)`); return; }
     let updateData = {};
     if (field === 'payment_status') {
       const nextStatus = !entry.payment_status;
       updateData = { payment_status: nextStatus, result: nextStatus ? true : entry.result };
-    } else if (field === 'result') {
-      updateData = { result: !entry.result };
-    }
-
+    } else if (field === 'result') { updateData = { result: !entry.result }; }
     try {
       const { error: supabaseError } = await supabase.from('entry').update(updateData).eq('entry_id', entry.entry_id);
       if (supabaseError) throw supabaseError;
       showToast('상태가 변경되었습니다.');
       refreshData(); 
-    } catch (err) {
-      alert('변경 실패: ' + err.message);
-    }
+    } catch (err) { alert('변경 실패: ' + err.message); }
   };
 
   const handleUpdateNote = async (entry_id, value) => {
@@ -211,9 +201,7 @@ export default function EntryManagementPage({ params }) {
       if (error) throw error;
       showToast('비고 저장 완료');
       refreshData();
-    } catch (error) {
-      showToast('저장 실패', 'error');
-    }
+    } catch (error) { showToast('저장 실패', 'error'); }
   };
 
   const handleDeleteEntry = async (entry) => {
@@ -223,9 +211,7 @@ export default function EntryManagementPage({ params }) {
       await supabase.from('entry').delete().eq('entry_id', entry.entry_id);
       showToast('정상적으로 삭제되었습니다.');
       refreshData();
-    } catch (error) {
-      showToast('삭제 실패', 'error');
-    }
+    } catch (error) { showToast('삭제 실패', 'error'); }
   };
 
   if (loading) return (
@@ -244,24 +230,36 @@ export default function EntryManagementPage({ params }) {
         </div>
       )}
 
+      {/* 헤더 섹션: 공유하기 버튼 추가됨 */}
       <div className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-100 px-4 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <Link href="/admin/events" className="p-2 -ml-2 text-slate-400 hover:text-slate-900 transition-colors">
             <ArrowLeft size={24} />
           </Link>
           <h1 className="text-lg font-black text-slate-900 truncate px-4">{eventInfo?.title}</h1>
-          <button 
-            disabled={entries.length >= 30}
-            onClick={() => setIsAddModalOpen(true)}
-            className={`p-2 -mr-2 transition-all ${entries.length >= 30 ? 'text-slate-200 opacity-50' : 'text-slate-900 active:scale-90'}`}
-          >
-            <Plus size={28} strokeWidth={2.5} />
-          </button>
+          <div className="flex items-center gap-1">
+            {/* 공유하기 버튼 */}
+            <button 
+              onClick={shareToKakao}
+              className="p-2 text-slate-900 active:scale-90 transition-transform"
+              title="미입금자 공유"
+            >
+              <Share2 size={24} strokeWidth={2.5} />
+            </button>
+            {/* 추가 버튼 */}
+            <button 
+              disabled={entries.length >= 30}
+              onClick={() => setIsAddModalOpen(true)}
+              className={`p-2 -mr-2 transition-all ${entries.length >= 30 ? 'text-slate-200 opacity-50' : 'text-slate-900 active:scale-90'}`}
+            >
+              <Plus size={28} strokeWidth={2.5} />
+            </button>
+          </div>
         </div>
       </div>
 
       <div className="max-w-4xl mx-auto p-4 space-y-4">
-        {/* 메인 통계 */}
+        {/* 기존 통계 및 리스트 코드 동일 */}
         <div className="grid grid-cols-12 gap-3">
           <div className="col-span-4 bg-white p-4 rounded-[24px] border border-slate-100 shadow-sm">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">인원</p>
@@ -280,7 +278,6 @@ export default function EntryManagementPage({ params }) {
           </div>
         </div>
 
-        {/* 세부 금액 합계 (추가된 섹션) */}
         <div className="grid grid-cols-3 gap-2 px-1">
           <div className="bg-slate-100/50 p-3 rounded-2xl border border-slate-100">
             <p className="text-[9px] font-bold text-slate-400 uppercase mb-1">기본 게임</p>
@@ -296,12 +293,10 @@ export default function EntryManagementPage({ params }) {
           </div>
         </div>
 
-        {/* 리스트 헤더 및 리스트 */}
         <div className="space-y-3 pt-2">
           <div className="flex items-center justify-between px-2">
             <h2 className="text-sm font-black text-slate-400 uppercase tracking-widest">Entry List</h2>
           </div>
-
           {entries.map((entry) => (
             <div key={entry.entry_id} className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden">
               <div className="p-5 space-y-4">
@@ -310,71 +305,30 @@ export default function EntryManagementPage({ params }) {
                     <h3 className="text-xl font-black text-slate-900 leading-none mb-1">{entry.user?.name || 'Unknown'}</h3>
                     <p className="text-[10px] text-slate-400 font-bold uppercase">ID: {entry.entry_id}</p>
                   </div>
-                  <button onClick={() => handleDeleteEntry(entry)} className="p-3 -mr-2 text-slate-200 hover:text-red-500 transition-colors">
-                    <Trash2 size={20} />
-                  </button>
+                  <button onClick={() => handleDeleteEntry(entry)} className="p-3 -mr-2 text-slate-200 hover:text-red-500 transition-colors"><Trash2 size={20} /></button>
                 </div>
-
                 <div className="flex items-center gap-3">
                   <div className="flex-1 flex gap-2">
-                    <button 
-                      disabled={entry.payment_status || isToggling === entry.entry_id}
-                      onClick={() => handleSidePayToggle(entry, 'pay_person')}
-                      className={`flex-1 flex flex-col items-center justify-center gap-1 py-3 rounded-2xl border transition-all ${
-                        entry.payment_status ? 'bg-slate-50 opacity-40' : 
-                        entry.pay_person ? 'bg-indigo-50 border-indigo-200 text-indigo-600 ring-2 ring-indigo-100' : 'bg-white border-slate-100 text-slate-300'
-                      }`}
-                    >
-                      {entry.payment_status ? <Lock size={14} /> : <UserCheck size={18} />}
-                      <span className="text-[10px] font-black uppercase tracking-tighter">개인전</span>
-                    </button>
-                    <button 
-                      disabled={entry.payment_status || isToggling === entry.entry_id}
-                      onClick={() => handleSidePayToggle(entry, 'pay_team')}
-                      className={`flex-1 flex flex-col items-center justify-center gap-1 py-3 rounded-2xl border transition-all ${
-                        entry.payment_status ? 'bg-slate-50 opacity-40' : 
-                        entry.pay_team ? 'bg-purple-50 border-purple-200 text-purple-600 ring-2 ring-purple-100' : 'bg-white border-slate-100 text-slate-300'
-                      }`}
-                    >
-                      {entry.payment_status ? <Lock size={14} /> : <Users2 size={18} />}
-                      <span className="text-[10px] font-black uppercase tracking-tighter">팀전</span>
-                    </button>
+                    <button disabled={entry.payment_status || isToggling === entry.entry_id} onClick={() => handleSidePayToggle(entry, 'pay_person')} className={`flex-1 flex flex-col items-center justify-center gap-1 py-3 rounded-2xl border transition-all ${entry.payment_status ? 'bg-slate-50 opacity-40' : entry.pay_person ? 'bg-indigo-50 border-indigo-200 text-indigo-600 ring-2 ring-indigo-100' : 'bg-white border-slate-100 text-slate-300'}`}>{entry.payment_status ? <Lock size={14} /> : <UserCheck size={18} />}<span className="text-[10px] font-black uppercase tracking-tighter">개인전</span></button>
+                    <button disabled={entry.payment_status || isToggling === entry.entry_id} onClick={() => handleSidePayToggle(entry, 'pay_team')} className={`flex-1 flex flex-col items-center justify-center gap-1 py-3 rounded-2xl border transition-all ${entry.payment_status ? 'bg-slate-50 opacity-40' : entry.pay_team ? 'bg-purple-50 border-purple-200 text-purple-600 ring-2 ring-purple-100' : 'bg-white border-slate-100 text-slate-300'}`}>{entry.payment_status ? <Lock size={14} /> : <Users2 size={18} />}<span className="text-[10px] font-black uppercase tracking-tighter">팀전</span></button>
                   </div>
                   <div className="bg-slate-100 px-4 py-4 rounded-2xl border border-slate-200 min-w-[100px] text-center">
                     <p className="text-[9px] font-black text-slate-400 uppercase mb-1">금액</p>
                     <p className="text-sm font-black text-slate-700">{(entry.payment_amount || 0).toLocaleString()}원</p>
                   </div>
                 </div>
-
                 <div className="grid grid-cols-2 gap-2">
-                  <button 
-                    onClick={() => handleStatusToggle(entry, 'payment_status')}
-                    className={`py-3.5 rounded-2xl font-black text-xs transition-all ${entry.payment_status ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-500'}`}
-                  >
-                    {entry.payment_status ? '입금완료' : '입금대기'}
-                  </button>
-                  <button 
-                    onClick={() => handleStatusToggle(entry, 'result')}
-                    className={`py-3.5 rounded-2xl font-black text-xs transition-all ${entry.result ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}
-                  >
-                    {entry.result ? '신청확정' : '미정'}
-                  </button>
+                  <button onClick={() => handleStatusToggle(entry, 'payment_status')} className={`py-3.5 rounded-2xl font-black text-xs transition-all ${entry.payment_status ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-500'}`}>{entry.payment_status ? '입금완료' : '입금대기'}</button>
+                  <button onClick={() => handleStatusToggle(entry, 'result')} className={`py-3.5 rounded-2xl font-black text-xs transition-all ${entry.result ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{entry.result ? '신청확정' : '미정'}</button>
                 </div>
-
-                <input 
-                  type="text"
-                  defaultValue={entry.text}
-                  onBlur={(e) => handleUpdateNote(entry.entry_id, e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm focus:ring-2 focus:ring-slate-200 outline-none"
-                  placeholder="비고 사항 입력..."
-                />
+                <input type="text" defaultValue={entry.text} onBlur={(e) => handleUpdateNote(entry.entry_id, e.target.value)} className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm focus:ring-2 focus:ring-slate-200 outline-none" placeholder="비고 사항 입력..." />
               </div>
             </div>
           ))}
         </div>
       </div>
       
-      {/* (Add Modal 코드는 이전과 동일하므로 지면상 생략하거나 그대로 유지하시면 됩니다) */}
+      {/* Add Modal */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
           <div className="bg-white w-full max-w-md rounded-[32px] overflow-hidden shadow-2xl">
