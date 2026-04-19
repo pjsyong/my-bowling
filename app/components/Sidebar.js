@@ -10,12 +10,29 @@ export default function Sidebar() {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
 
-  const menuItems = [
-    { name: '수발이 기록', icon: <Trophy size={20} />, path: '/' },
-    { name: '벙개 기록', icon: <Trophy size={20} />, path: '/person' },
-    { name: '게임 목록', icon: <List size={20} />, path: '/list' },
-    { name: '개인 기록', icon: <User size={20} />, path: '/profile' },
-    { name: '게임 신청', icon: <UserPlus size={20} />, path: '/register' },
+  // 카테고리별 메뉴 구조화
+  const menuGroups = [
+    {
+      title: 'game',
+      items: [
+        { name: '수발이 기록', icon: <Trophy size={20} />, path: '/' },
+        { name: '벙개 기록', icon: <Trophy size={20} />, path: '/person' },
+        { name: '게임 목록', icon: <List size={20} />, path: '/list' },
+      ]
+    },
+    {
+      title: 'apply',
+      items: [
+        { name: '게임 신청', icon: <UserPlus size={20} />, path: '/invite' },
+      ]
+    },
+    {
+      title: 'info',
+      items: [
+        { name: '개인 기록', icon: <User size={20} />, path: '/profile' },
+        { name: '회원 가입', icon: <UserPlus size={20} />, path: '/register' },
+      ]
+    }
   ];
 
   return (
@@ -37,7 +54,7 @@ export default function Sidebar() {
               onClick={() => setIsOpen(false)}
               className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100]"
             />
-            {/* 사이드바 본체 (상단 레이어로 노출) */}
+            {/* 사이드바 본체 */}
             <motion.aside 
               initial={{ x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
@@ -50,23 +67,34 @@ export default function Sidebar() {
                 </button>
               </div>
 
-              <nav className="flex-1 space-y-2">
-                {menuItems.map((item) => {
-                  const isActive = pathname === item.path;
-                  return (
-                    <Link key={item.path} href={item.path} onClick={() => setIsOpen(false)}>
-                      <div className={`flex items-center gap-4 px-5 py-4 rounded-2xl transition-all ${isActive ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100' : 'text-slate-500 hover:bg-slate-50'}`}>
-                        {item.icon}
-                        <span className="font-bold text-base">{item.name}</span>
-                      </div>
-                    </Link>
-                  );
-                })}
+              {/* 카테고리별 네비게이션 */}
+              <nav className="flex-1 overflow-y-auto space-y-8">
+                {menuGroups.map((group) => (
+                  <div key={group.title} className="space-y-2">
+                    <p className="px-5 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                      {group.title}
+                    </p>
+                    <div className="space-y-1">
+                      {group.items.map((item) => {
+                        const isActive = pathname === item.path;
+                        return (
+                          <Link key={item.path} href={item.path} onClick={() => setIsOpen(false)}>
+                            <div className={`flex items-center gap-4 px-5 py-4 rounded-2xl transition-all ${isActive ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100' : 'text-slate-500 hover:bg-slate-50'}`}>
+                              {item.icon}
+                              <span className="font-bold text-base">{item.name}</span>
+                            </div>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
               </nav>
 
+              {/* 하단 Admin Setting (기존 위치/폼 유지) */}
               <div className="pt-4 border-t border-gray-100">
                 <Link href="/admin" onClick={() => setIsOpen(false)}>
-                  <div className="flex items-center gap-4 px-5 py-4 text-slate-400">
+                  <div className="flex items-center gap-4 px-5 py-4 text-slate-400 hover:bg-slate-50 rounded-2xl transition-all">
                     <span className="text-xl">🔒</span>
                     <span className="font-bold">Admin Setting</span>
                   </div>

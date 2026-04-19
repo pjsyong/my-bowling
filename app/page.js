@@ -50,7 +50,9 @@ export default function IntegratedRecordPage() {
         const s = scoreData?.find(score => score.user_id === entry.user_id) || {};
         const scores = [s.game_1 || 0, s.game_2 || 0, s.game_3 || 0, s.game_4 || 0, s.game_5 || 0];
         const total = scores.reduce((a, b) => a + b, 0);
-        return { ...entry, total, avg: (total / 5).toFixed(1), scores };
+        const validGamesCount = scores.filter(score => score > 0).length;
+        const average = validGamesCount > 0 ? (total / validGamesCount).toFixed(1) : "0.0";
+        return { ...entry, total, avg: average, scores };
       }).filter(entry => entry.result === true).sort((a, b) => b.total - a.total) || [];
     },
     staleTime: 0,
@@ -124,8 +126,10 @@ export default function IntegratedRecordPage() {
           <p className="text-lg font-black text-slate-800 truncate px-1">{rankings[0]?.user?.name || '-'}</p>
         </div>
         <div className="text-center py-3">
-          <p className="text-[10px] font-black text-slate-400 uppercase">Score</p>
-          <p className="text-lg font-black text-slate-800">{rankings[0]?.total || 0}</p>
+          <p className="text-[10px] font-black text-slate-400 uppercase">Average</p>
+          <p className="text-lg font-black text-indigo-500">
+            {rankings[0]?.avg || '0.0'}
+          </p>
         </div>
       </div>
 
