@@ -13,9 +13,9 @@ export default function Sidebar() {
   const menuItems = [
     { name: '수발이 기록', icon: <Trophy size={20} />, path: '/' },
     { name: '벙개 기록', icon: <Trophy size={20} />, path: '/person' },
-    { name: '대회 목록', icon: <List size={20} />, path: '/list' },
+    { name: '게임 목록', icon: <List size={20} />, path: '/list' },
     { name: '개인 기록', icon: <User size={20} />, path: '/profile' },
-    { name: '회원 등록', icon: <UserPlus size={20} />, path: '/register' },
+    { name: '게임 신청', icon: <UserPlus size={20} />, path: '/register' },
   ];
 
   return (

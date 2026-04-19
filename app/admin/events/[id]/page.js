@@ -100,20 +100,44 @@ export default function EntryManagementPage({ params }) {
     setTimeout(() => setToast({ show: false, message: '', type: 'success' }), 2000);
   };
 
+  const [isToggling, setIsToggling] = useState(null);
   const handleSidePayToggle = async (entry, field) => {
-    if (entry.payment_status) return;
+    // 이미 입금 완료되었거나, 현재 이 항목이 수정 중이라면 클릭 무시 (Lock)
+    if (entry.payment_status || isToggling === entry.entry_id) return;
+
+    // 로딩 상태 시작 (클릭 차단)
+    setIsToggling(entry.entry_id);
+
+    // 현재 entry 객체에 담긴 값을 기반으로 '최종 상태' 계산
     const nextStatus = !entry[field];
+    const finalPayPerson = field === 'pay_person' ? nextStatus : entry.pay_person;
+    const finalPayTeam = field === 'pay_team' ? nextStatus : entry.pay_team;
+
+    // 최종 상태 기준 금액 합산
     let newAmount = 0;
-    const cp = field === 'pay_person' ? nextStatus : entry.pay_person;
-    const ct = field === 'pay_team' ? nextStatus : entry.pay_team;
-    if (cp) newAmount += Number(eventInfo.event_pay_person || 0);
-    if (ct) newAmount += Number(eventInfo.event_pay_team || 0);
+    if (finalPayPerson) newAmount += Number(eventInfo?.event_pay_person || 0);
+    if (finalPayTeam) newAmount += Number(eventInfo?.event_pay_team || 0);
 
     try {
-      await supabase.from('entry').update({ [field]: nextStatus, payment_amount: newAmount }).eq('entry_id', entry.entry_id);
+      const { error } = await supabase
+        .from('entry')
+        .update({ 
+          [field]: nextStatus, 
+          payment_amount: newAmount 
+        })
+        .eq('entry_id', entry.entry_id);
+
+      if (error) throw error;
+      
       showToast('금액이 갱신되었습니다.');
-      refreshData(); // 캐시 갱신
-    } catch (e) { showToast('갱신 실패', 'error'); }
+      // 캐시를 무효화하여 최신 DB 데이터를 다시 불러옴
+      await queryClient.invalidateQueries({ queryKey: ['admin-entries', eventId] });
+    } catch (e) { 
+      showToast('갱신 실패', 'error'); 
+    } finally {
+      // 성공/실패 여부와 상관없이 로딩 해제 (다시 클릭 가능하게 함)
+      setIsToggling(null);
+    }
   };
 
   const handleSearchUser = async () => {
@@ -344,7 +368,7 @@ export default function EntryManagementPage({ params }) {
                 <div className="flex items-center gap-3">
                   <div className="flex-1 flex gap-2">
                     <button 
-                      disabled={entry.payment_status}
+                      disabled={entry.payment_status || isToggling === entry.entry_id}
                       onClick={() => handleSidePayToggle(entry, 'pay_person')}
                       className={`flex-1 flex flex-col items-center justify-center gap-1 py-3 rounded-2xl border transition-all ${
                         entry.payment_status ? 'bg-slate-50 border-transparent opacity-40' : 
@@ -355,7 +379,7 @@ export default function EntryManagementPage({ params }) {
                       <span className="text-[10px] font-black uppercase tracking-tighter">개인전</span>
                     </button>
                     <button 
-                      disabled={entry.payment_status}
+                      disabled={entry.payment_status || isToggling === entry.entry_id}
                       onClick={() => handleSidePayToggle(entry, 'pay_team')}
                       className={`flex-1 flex flex-col items-center justify-center gap-1 py-3 rounded-2xl border transition-all ${
                         entry.payment_status ? 'bg-slate-50 border-transparent opacity-40' : 
