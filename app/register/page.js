@@ -134,7 +134,7 @@ export default function RegisterPage() {
             <input 
               required
               type="text"
-              placeholder="본인 확인용 식별 정보를 입력해 주세요"
+              placeholder="커스텀 ID를 입력해 주세요"
               className="w-full px-6 md:px-8 py-4.5 md:py-5 bg-slate-50 border-none rounded-[20px] md:rounded-[24px] focus:ring-2 focus:ring-blue-500 outline-none transition-all font-bold text-slate-800 placeholder:text-slate-300 text-sm md:text-base"
               value={formData.current_id}
               onChange={handleIdChange}
