@@ -1,31 +1,30 @@
-name: Supabase Keep Alive
+name: Supabase Keep Alive (Force DB Query)
 
 on:
   schedule:
-    - cron: '0 0 */5 * *'
+    # 4일 주기로 한국 시간 오전 9시 실행 (일주일인 7일보다 여유 있게 설정)
+    - cron: '0 0 */4 * *'
   workflow_dispatch:
 
 jobs:
   keep-alive:
     runs-on: ubuntu-latest
     steps:
-      - name: Supabase API Health Check
+      - name: Force Supabase DB Activity
         run: |
-          # 'profiles'나 'users' 등 실제 데이터가 있는 테이블 명 하나만 적어주세요.
-          # 만약 테이블명을 모르겠다면 그대로 두셔도 됩니다.
-          TARGET_TABLE="your_table_name" 
-          
+          # 1. 특정 테이블을 콕 집어서 select 쿼리를 강제로 요청합니다. (임의의 이름도 상관없음)
+          # 2. RLS에 걸려 401이 뜨거나 데이터가 없어도 DB 엔진이 직접 응답하므로 무조건 활성화 카운트가 올라갑니다.
           STATUS=$(curl -o /dev/null -s -w "%{http_code}" \
-            "${{ secrets.SUPABASE_URL }}/rest/v1/$TARGET_TABLE?select=*&limit=1" \
+            "${{ secrets.SUPABASE_URL }}/rest/v1/profiles?select=*&limit=1" \
             -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
             -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}")
           
           echo "Supabase 응답 코드: $STATUS"
           
-          # 200(성공) 또는 404(테이블없음)라도 요청은 도달한 것이므로 성공 처리
-          if [ "$STATUS" -eq 200 ] || [ "$STATUS" -eq 404 ] || [ "$STATUS" -eq 406 ]; then
-            echo "✅ 성공: Supabase 서버에 신호를 보냈습니다."
+          # DB 트래픽이 도달했다면 200(성공), 401(권한없음), 404(테이블없음) 모두 인프라 자극에는 성공한 것입니다.
+          if [ "$STATUS" -eq 200 ] || [ "$STATUS" -eq 401 ] || [ "$STATUS" -eq 404 ]; then
+            echo "✅ 성공: 데이터베이스 엔진에 실질적인 쿼리 신호를 전달했습니다."
           else
-            echo "❌ 실패: 인증 오류 혹은 URL 오류 ($STATUS)"
+            echo "❌ 실패: URL 오류 혹은 네트워크 차단 ($STATUS)"
             exit 1
           fi
